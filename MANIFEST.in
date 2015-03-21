@@ -1,0 +1,2 @@
+include requirements.txt README.rst
+recursive-include restfulchemy LICENSE AUTHORS chinook.sqlite CHINOOK_LICENSE

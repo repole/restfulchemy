@@ -107,15 +107,17 @@ Now say we submit a PUT request to /api/tracks/1 with the query parameters:
 
 -  media_type_id=2
 -  artist.~id:artist_id=1.~add=True
--  Set track.artist to a different artist (the db will be queried for an
-   artist that has an artist_id of 1). Whitelisting “artist.~update”
-   allows this.
--  In the process of setting the artist to a different one, the old one
-   must of course must be removed since this relationship reference does
-   not use a list. This is why “artist.~delete” must be included in the
-   whitelist. Note that this won’t actually cause the artist to be
-   deleted from the database (unless you have some cascade delete set
-   up).
+
+   -  Set track.artist to a different artist (the db will be queried for an
+      artist that has an artist_id of 1). Whitelisting “artist.~update”
+      allows this.
+   -  In the process of setting the artist to a different one, the old
+      one must of course must be removed since this relationship
+      reference does not use a list. This is why “artist.~delete” must
+      be included in the whitelist. Note that this won’t actually cause
+      the artist to be deleted from the database (unless you have some
+      cascade delete set up).
+
 -  The ~id attribute is used to access a sub-object of a relationship
    field (whether it’s a list based relationship or not does not
    matter).
@@ -128,9 +130,12 @@ Now say we submit a PUT request to /api/tracks/1 with the query parameters:
       referenced object to the list.
 
 -  album.~new.~add=True
--  Set track.album to a newly created album.
+
+   -  Set track.album to a newly created album.
+
 -  album.~new.name=My New Album
--  Give that newly created album a name.
+
+   -  Give that newly created album a name.
 
 Creating Objects
 ----------------

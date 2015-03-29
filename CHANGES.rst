@@ -2,6 +2,18 @@
 Changes
 =======
 
+Release 0.1.2
+=============
+
+Incompatible changes
+--------------------
+* get_resource() no longer erroneously accepts pagination params.
+
+Documentation
+-------------
+* Updated a few function doc strings.
+
+
 Release 0.1.1
 =============
 

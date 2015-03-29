@@ -3,7 +3,7 @@
     restfulchemy.__init__
     ~~~~~~~~~~~~~~~~~~~~~
 
-    A set of utility functions for working with SQLAlchemy
+    A set of utility functions for working with SQLAlchemy.
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
@@ -20,7 +20,7 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 class AlchemyUpdateException(Exception):
@@ -420,7 +420,8 @@ def get_resources(db_session, RecordClass, query_params, whitelist=None,
                   page=None, page_max_size=None, stack_size_limit=None):
     """Get a list of SQLAlchemy objects.
 
-    See :func:`get_resources_query` for details on the parameters.
+    See :func:`get_resources_query` and :func:`apply_order_by` for
+    details on the parameters.
 
     """
     query = get_resources_query(
@@ -436,12 +437,13 @@ def get_resources(db_session, RecordClass, query_params, whitelist=None,
 
 
 def get_resource(db_session, RecordClass, query_params, whitelist=None,
-                 page=None, page_max_size=None, stack_size_limit=None):
+                 stack_size_limit=None):
     """Get a single instance of a SQLAlchemy object.
 
-    See :func:`get_resources` for details on the parameters. The only
-    difference between these two functions is this one calls
-    `first()` on the query object rather than `all()`.
+    See :func:`get_resources_query` and :func:`apply_order_by` for
+    details on the parameters. The main difference between this function
+    and :func:`get_resources` is this one calls `first()` on the query
+    object rather than `all()`.
 
     """
     query = get_resources_query(
@@ -452,7 +454,7 @@ def get_resource(db_session, RecordClass, query_params, whitelist=None,
         stack_size_limit
     )
     query = apply_order_by(query, RecordClass, query_params)
-    query = apply_offset_and_limit(query, query_params, page, page_max_size)
+    query = apply_offset_and_limit(query, query_params, None, 1)
     return query.first()
 
 

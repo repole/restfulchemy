@@ -3,7 +3,7 @@
     restfulchemy.tests.__init__
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Tests for our new query syntax.
+    Tests for RESTfulchemy create, get, and update methods.
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.

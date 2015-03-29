@@ -1,24 +1,29 @@
 RESTfulchemy
 ============
 
-|Build Status| |Coverage Status|
+|Build Status| |Coverage Status| |Docs| |License| |Python Versions|
+|Python Implementations| |Format|
 
 Get, update, and create SQLAlchemy objects using query string parameters.
+
+Shares some similarities with projects like Django-Tastypie and Flask-RESTful,
+but depends on the SQLAlchemy ORM and otherwise leaves more decisions up to
+the user.
 
 Getting
 -------
 
 Say you’re building an API for your music collection, and you want to be
 able to accept query params and use them to filter results for all
-fields except “unit\_price”. An example using Flask might look like:
+fields except "unit_price". An example using Flask might look like:
 
 .. code:: python
 
     @app.route("/api/tracks", methods=["GET"])
     def get_tracks():
-        #get your database session however you normally would
+        # get your database session however you normally would
         db_session = ...
-        tracks = get_objects(
+        tracks = get_resources(
             db_session,
             Track,
             request.values.to_dict(),
@@ -34,10 +39,9 @@ fields except “unit\_price”. An example using Flask might look like:
                 "artist.name",
                 "album.name"
             ]
-        matching_records = query.all()
-        #jsonify your records however you'd like
-        json_records = jsonify(matching_records)
-        return json_records
+        matching_tracks = query.all()
+        # return however you choose
+        return ...
 
 The result of this is being able to write queries like:
 
@@ -74,12 +78,12 @@ Again, using Flask and the same API example as above:
 
     @app.route("/api/tracks/<track_id>", methods=["PUT"])
     def update_track(track_id):
-        #get your database session however you normally would
+        # get your database session however you normally would
         db_session = ...
-        #get the instance of the track we want to update
+        # get the instance of the track we want to update
         track = db_session.query(Track).filter(
             Track.track_id == track_id).first()
-        update_object(
+        update_resource(
             db_session,
             track,
             query_string,
@@ -101,7 +105,8 @@ Again, using Flask and the same API example as above:
             ]
         )
         db_session.commit()
-        return jsonify(track)
+        # return however you choose
+        return ...
 
 Now say we submit a PUT request to /api/tracks/1 with the query parameters:
 
@@ -146,15 +151,32 @@ Nearly identical to updating, with a few small differences.
 
     @app.route("/api/tracks/", methods=["POST"])
     def create_track():
-        #get your database session however you normally would
+        # get your database session however you normally would
         db_session = ...
-        track = create_object(
+        track = create_resource(
             db_session,
             Track,    # note that this is the actual model class
-            query_string
+            query_string,
+            whitelist=[
+                "name",
+                "track_id",
+                "album_id",
+                "media_type_id",
+                "genre_id",
+                "composer",
+                "milliseconds",
+                "bytes",
+                "artist.~update",
+                "artist.~delete",
+                "artist.name",
+                "album.~create",
+                "album.~delete",
+                "album.name"
+            ]
         )
         db_session.commit()
-        return jsonify(track)
+        # return however you choose
+        return ...
 
 Contributing
 ------------
@@ -165,9 +187,26 @@ with your name along with an updated CHANGES.rst.
 License
 -------
 
-BSD
+MIT
 
 .. |Build Status| image:: https://travis-ci.org/repole/restfulchemy.svg?branch=master
    :target: https://travis-ci.org/repole/restfulchemy
 .. |Coverage Status| image:: https://coveralls.io/repos/repole/restfulchemy/badge.svg?branch=master
    :target: https://coveralls.io/r/repole/restfulchemy?branch=master
+.. |Docs| image:: https://readthedocs.org/projects/restfulchemy/badge/?version=latest
+   :target: https://readthedocs.org/projects/restfulchemy/?badge=latest
+.. |Version| image:: https://pypip.in/version/restfulchemy/badge.svg
+   :target: https://pypi.python.org/pypi/restfulchemy/
+   :alt: Latest Version
+.. |Python Versions| image:: https://pypip.in/py_versions/restfulchemy/badge.svg
+   :target: https://pypi.python.org/pypi/restfulchemy/
+   :alt: Supported Python versions
+.. |Python Implementations| image:: https://pypip.in/implementation/restfulchemy/badge.svg
+   :target: https://pypi.python.org/pypi/restfulchemy/
+   :alt: Supported Python implementations
+.. |License| image:: https://pypip.in/license/restfulchemy/badge.svg
+   :target: https://pypi.python.org/pypi/restfulchemy/
+   :alt: License
+.. |Format| image:: https://pypip.in/format/restfulchemy/badge.svg
+   :target: https://pypi.python.org/pypi/restfulchemy/
+   :alt: Download format

@@ -7,7 +7,7 @@
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
-    :license: BSD - See LICENSE for more details.
+    :license: MIT - See LICENSE for more details.
 """
 from __future__ import unicode_literals
 from restfulchemy._compat import str
@@ -20,7 +20,7 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 class AlchemyUpdateException(Exception):
@@ -333,8 +333,8 @@ def get_primary_key_dict(id_string):
     return result
 
 
-def _set_non_list_relationship_obj(
-        parent, attr_name, obj, whitelist_name, whitelist):
+def _set_non_list_relationship_obj(parent, attr_name, obj, whitelist_name,
+                                   whitelist):
     """Set a non list using relationship to a given object."""
     # if already set, check if delete is whitelisted
     if getattr(parent, attr_name) is not None:
@@ -352,8 +352,8 @@ def _set_non_list_relationship_obj(
     setattr(parent, attr_name, obj)
 
 
-def create_object(db_session, RecordClass, params, whitelist=None,
-                  add_to_session=True, stack_size_limit=None):
+def create_resource(db_session, RecordClass, params, whitelist=None,
+                    add_to_session=True, stack_size_limit=None):
     """Create a new instance of a SQLAlchemy object.
 
     See :func:`update_object` for parameter details.
@@ -375,8 +375,8 @@ def create_object(db_session, RecordClass, params, whitelist=None,
     return instance
 
 
-def get_objects_query(db_session, RecordClass, query_params, whitelist=None,
-                      stack_size_limit=None):
+def get_resources_query(db_session, RecordClass, query_params, whitelist=None,
+                        stack_size_limit=None):
     """Get a query object with filters from query_params applied.
 
     :param db_session: A SQLAlchemy database session or query session.
@@ -416,14 +416,14 @@ def get_objects_query(db_session, RecordClass, query_params, whitelist=None,
     return query
 
 
-def get_objects(db_session, RecordClass, query_params, whitelist=None,
-                page=None, page_max_size=None, stack_size_limit=None):
+def get_resources(db_session, RecordClass, query_params, whitelist=None,
+                  page=None, page_max_size=None, stack_size_limit=None):
     """Get a list of SQLAlchemy objects.
 
-    See :func:`get_objects_query` for details on the parameters.
+    See :func:`get_resources_query` for details on the parameters.
 
     """
-    query = get_objects_query(
+    query = get_resources_query(
         db_session,
         RecordClass,
         query_params,
@@ -435,16 +435,16 @@ def get_objects(db_session, RecordClass, query_params, whitelist=None,
     return query.all()
 
 
-def get_object(db_session, RecordClass, query_params, whitelist=None,
-               page=None, page_max_size=None, stack_size_limit=None):
+def get_resource(db_session, RecordClass, query_params, whitelist=None,
+                 page=None, page_max_size=None, stack_size_limit=None):
     """Get a single instance of a SQLAlchemy object.
 
-    See :func:`get_objects` for details on the parameters. The only
+    See :func:`get_resources` for details on the parameters. The only
     difference between these two functions is this one calls
     `first()` on the query object rather than `all()`.
 
     """
-    query = get_objects_query(
+    query = get_resources_query(
         db_session,
         RecordClass,
         query_params,
@@ -456,14 +456,14 @@ def get_object(db_session, RecordClass, query_params, whitelist=None,
     return query.first()
 
 
-def update_object(db_session, instance, params, whitelist=None,
-                  add_to_session=True, stack_size_limit=None):
+def update_resource(db_session, instance, params, whitelist=None,
+                    add_to_session=True, stack_size_limit=None):
     """Update a SQLAlchemy model instance based on query params.
 
     To update a relationship item, regardless of if the relationship
     uses a list or not, you must use $id notation::
 
-        update_object(
+        update_resource(
             db_session,
             album,
             {"artist.$id:artist_id=1.name": "Nas"}
@@ -474,7 +474,7 @@ def update_object(db_session, instance, params, whitelist=None,
     rather want to set the album's artist relation to a
     different artist object. To do this, you would write::
 
-        update_object(
+        update_resource(
             db_session,
             album,
             {"artist.$id:artist_id=5.$add": True}
@@ -493,7 +493,7 @@ def update_object(db_session, instance, params, whitelist=None,
 
     To explicitly remove an object from a relation::
 
-        update_object(
+        update_resource(
             db_session,
             album,
             {"artist.$id:artist_id=1.$delete": True}

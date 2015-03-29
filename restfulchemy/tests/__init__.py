@@ -7,7 +7,7 @@
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
-    :license: BSD - See LICENSE for more details.
+    :license: MIT - See LICENSE for more details.
 """
 from __future__ import unicode_literals
 import unittest
@@ -17,8 +17,8 @@ from sqlalchemy.orm import sessionmaker
 from mqlalchemy.tests import models
 from mqlalchemy import InvalidMQLException
 import restfulchemy
-from restfulchemy import update_object, create_object, \
-    get_object, get_objects, AlchemyUpdateException
+from restfulchemy import update_resource, create_resource, \
+    get_resource, get_resources, AlchemyUpdateException
 import json
 
 
@@ -29,9 +29,9 @@ class AlbumPlus(models.Album):
     test = object()
 
 
-class AlchemyUtilsTests(unittest.TestCase):
+class RESTfulchemyTests(unittest.TestCase):
 
-    """A collection of AlchemyUtils tests."""
+    """A collection of RESTfulchemy tests."""
 
     def setUp(self):
         """Configure a db session for the chinook database."""
@@ -51,14 +51,14 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that a simple obj update works."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(self.db_session, album, {"title": "TEST"})
+        update_resource(self.db_session, album, {"title": "TEST"})
         self.assertTrue(album.title == "TEST")
 
     def test_null_update(self):
         """Make sure that a obj update works with no update params."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(self.db_session, album, None)
+        update_resource(self.db_session, album, None)
         self.assertTrue(
             album.album_id == 1 and
             album.title == "For Those About To Rock We Salute You" and
@@ -80,7 +80,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             "tracks.$new0.bytes": "3305166",
             "tracks.$new0.unit_price": "0.99",
         }
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             update_dict)
@@ -102,7 +102,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             "tracks.$new0.bytes": "3305166",
             "tracks.$new0.unit_price": "0.99",
         }
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             update_dict,
@@ -135,7 +135,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             "tracks.$new0.bytes": "3305166",
             "tracks.$new0.unit_price": "0.99",
         }
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             update_dict,
@@ -170,7 +170,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         }
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             playlist,
             update_dict,
@@ -189,7 +189,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that we can add an item to a list relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=1.~add": True}
@@ -200,7 +200,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure we can add an item to a whitelisted relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=1.$add": True},
@@ -212,7 +212,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure generic whitelisting works for updating a relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=1.$add": True},
@@ -226,7 +226,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Playlist.playlist_id == 18).first()
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             playlist,
             {"tracks.$id:track_id=1.$add": True},
@@ -237,7 +237,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure we can update a list relationship item."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.name": "Test Track Seven"})
@@ -247,7 +247,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure we can update a whitelisted list relationship item."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.name": "Test Track Seven"},
@@ -258,7 +258,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that we can delete an item from a list relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.$delete": True}
@@ -269,7 +269,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure we can delete an item in a whitelisted relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.$delete": True},
@@ -281,7 +281,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure generic whitelisting works for deleting a relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.$delete": True},
@@ -295,7 +295,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Playlist.playlist_id == 18).first()
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             playlist,
             {"tracks.$id:track_id=597.$delete": True},
@@ -306,7 +306,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that a non-list relation can have a field set."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=1.name": "TEST"})
@@ -318,7 +318,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.name": "TEST"})
@@ -329,7 +329,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:ardtist_id=1.name": "TEST"})
@@ -340,7 +340,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:artist_id=1": "TEST"})
@@ -349,7 +349,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that a non-list relation can be set."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$add": True})
@@ -359,7 +359,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure a whitelisted non-list relation can be set."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$add": True},
@@ -370,7 +370,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure a generic whitelist works for a non-list relation."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$add": True},
@@ -383,7 +383,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$add": True},
@@ -395,7 +395,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$add": True},
@@ -405,7 +405,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure that a non-list relation can be created."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {
@@ -418,7 +418,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure a whitelisted non-list relation can be set."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {
@@ -432,7 +432,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure a generic whitelist works for a non-list relation."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {
@@ -448,7 +448,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -463,7 +463,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             AlbumPlus.album_id == 1).all()[0]
         self.assertRaises(
             AttributeError,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -476,7 +476,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             TypeError,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -489,7 +489,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             AlbumPlus.album_id == 1).all()[0]
         self.assertRaises(
             AttributeError,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -502,7 +502,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             TypeError,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -515,7 +515,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             TypeError,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -528,7 +528,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {
@@ -539,7 +539,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure a non-list relation can be deleted."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=1.$delete": True})
@@ -551,7 +551,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$delete": True})
@@ -560,7 +560,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Make sure a whitelisted non-list relation can be deleted."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=1.$delete": True},
@@ -571,7 +571,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         """Ensure generic whitelisted non-list relation is deletable."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
-        update_object(
+        update_resource(
             self.db_session,
             album,
             {"artist.$id:artist_id=1.$delete": True},
@@ -584,7 +584,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             album,
             {"artist.$id:artist_id=1.$delete": True},
@@ -608,7 +608,7 @@ class AlchemyUtilsTests(unittest.TestCase):
 
     def test_simple_create(self):
         """Make sure we can create a new instance of a model."""
-        album = create_object(
+        album = create_resource(
             self.db_session,
             models.Album,
             {"title": "Test Album",
@@ -631,7 +631,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             "tracks.$new0.bytes": "3305166",
             "tracks.$new0.unit_price": "0.99",
         }
-        update_object(
+        update_resource(
             self.db_session,
             playlist,
             update_dict,
@@ -640,19 +640,19 @@ class AlchemyUtilsTests(unittest.TestCase):
                         playlist.tracks[1].composer == "Nick Repole")
         self.assertRaises(
             AlchemyUpdateException,
-            update_object,
+            update_resource,
             self.db_session,
             playlist,
             update_dict,
             stack_size_limit=1)
 
-    def test_get_objects(self):
-        """Test simple get_objects functionality."""
+    def test_get_resources(self):
+        """Test simple get_resources functionality."""
         query_params = {
             "album_id_$lt": "10",
             "$query": json.dumps({"title": "Big Ones"})
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -661,8 +661,8 @@ class AlchemyUtilsTests(unittest.TestCase):
             result[0].album_id == 5
         )
 
-    def test_get_objects_filters(self):
-        """Test simple get_objects filtering functionality."""
+    def test_get_resources_filters(self):
+        """Test simple get_resources filtering functionality."""
         query_params = {
             "album_id_$lt": "10",
             "title_$like": "Big",
@@ -674,7 +674,7 @@ class AlchemyUtilsTests(unittest.TestCase):
             "album_id_$ne": 6,
             "$query": json.dumps({"title": "Big Ones"})
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -686,7 +686,7 @@ class AlchemyUtilsTests(unittest.TestCase):
     def test_get_all_objects(self):
         """Test getting all objects with an empty dict of params."""
         query_params = {}
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -695,55 +695,55 @@ class AlchemyUtilsTests(unittest.TestCase):
     def test_get_all_objects_null_query(self):
         """Test getting all objects with query_params set to `None`."""
         query_params = None
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
         self.assertTrue(len(result) == 347)
 
-    def test_get_object(self):
-        """Test simple get_object functionality."""
+    def test_get_resource(self):
+        """Test simple get_resource functionality."""
         query_params = {
             "album_id_$lt": "10",
             "$query": json.dumps({"title": "Big Ones"})
         }
-        result = get_object(
+        result = get_resource(
             self.db_session,
             models.Album,
             query_params)
         self.assertTrue(result.album_id == 5)
 
-    def test_get_object_list_param(self):
-        """Test simple get_object functionality."""
+    def test_get_resource_list_param(self):
+        """Test get_resource functionality with list query params."""
         query_params = {
             "album_id_$lt": ["10", "6"],
             "$query": [json.dumps({"title": "Big Ones"}),
                        json.dumps({"album_id": "5"})]
         }
-        result = get_object(
+        result = get_resource(
             self.db_session,
             models.Album,
             query_params)
         self.assertTrue(result.album_id == 5)
 
-    def test_get_object_bad_query(self):
-        """Test simple get_object functionality."""
+    def test_get_resource_bad_query(self):
+        """Ensure get_resource fails when passed bad query parameters."""
         query_params = {
             "$query": json.dumps(["Big Ones"])
         }
         self.assertRaises(
             InvalidMQLException,
-            get_object,
+            get_resource,
             self.db_session,
             models.Album,
             query_params)
 
-    def test_get_objects_ordered(self):
-        """Test simple get_objects functionality."""
+    def test_get_resources_ordered(self):
+        """Test simple get_resources ~order_by functionality."""
         query_params = {
             "~order_by": "album_id~DESC-title~ASC"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -757,7 +757,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~order_by": "album_id~ASC"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params,
@@ -770,7 +770,7 @@ class AlchemyUtilsTests(unittest.TestCase):
     def test_get_second_page(self):
         """Test that we can get the second page of a set of objects."""
         query_params = {}
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params,
@@ -787,7 +787,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         }
         self.assertRaises(
             ValueError,
-            get_objects,
+            get_resources,
             self.db_session,
             models.Album,
             query_params,
@@ -798,7 +798,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {}
         self.assertRaises(
             ValueError,
-            get_objects,
+            get_resources,
             self.db_session,
             models.Album,
             query_params,
@@ -809,7 +809,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~offset": "1"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -822,7 +822,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~offset": "dafd"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -833,7 +833,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~limit": "1"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -844,7 +844,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~limit": "dafd"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params)
@@ -855,7 +855,7 @@ class AlchemyUtilsTests(unittest.TestCase):
         query_params = {
             "~limit": "100"
         }
-        result = get_objects(
+        result = get_resources(
             self.db_session,
             models.Album,
             query_params,

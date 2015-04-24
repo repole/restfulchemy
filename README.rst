@@ -97,7 +97,7 @@ Again, using Flask and the same API example as above:
                 "milliseconds",
                 "bytes",
                 "artist.~add",
-                "artist.~delete",
+                "artist.~remove",
                 "artist.name",
                 "album.~create",
                 "album.~add",

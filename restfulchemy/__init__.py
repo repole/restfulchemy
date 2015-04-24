@@ -20,7 +20,7 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.1.2"
+__version__ = "0.2.0.dev0"
 
 
 class AlchemyUpdateException(Exception):
@@ -62,8 +62,9 @@ def get_class_attributes(RecordClass, attr_name):
                         attr_name.startswith("~new")):
                     class_attrs.append(inspect(root_type).mapper.class_)
                     continue
-                elif (attr_name == "$add" or attr_name == "$delete" or
-                      attr_name == "~add" or attr_name == "~delete"):
+                elif (attr_name == "~add" or attr_name == "$add" or
+                      attr_name == "~remove" or attr_name == "$remove" or
+                      attr_name == "~set" or attr_name == "$set"):
                     class_attrs.append(None)
                     continue
                 else:
@@ -333,23 +334,48 @@ def get_primary_key_dict(id_string):
     return result
 
 
-def _set_non_list_relationship_obj(parent, attr_name, obj, whitelist_name,
-                                   whitelist):
+def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
+                                   update_stack_item, full_attr_name,
+                                   whitelist_name, whitelist):
     """Set a non list using relationship to a given object."""
-    # if already set, check if delete is whitelisted
-    if getattr(parent, attr_name) is not None:
-        if not (whitelist is None or
-                whitelist_name in whitelist or
-                whitelist_name + ".$delete" in whitelist or
-                whitelist_name + ".~delete" in whitelist):
+    if getattr(parent, relationship_name) is not None:
+        if not (isinstance(update_stack_item, dict) and (
+                update_stack_item.get("$set") in (
+                    True, "True", "true", 1, "1") or
+                update_stack_item.get("~set") in (
+                    True, "True", "true", 1, "1"))):
             raise AlchemyUpdateException(
-                "Can not set " + whitelist_name +
-                " to a new object, $delete is not " +
-                "whitelisted."
-            )
-        setattr(parent, attr_name, None)
-    # set the relationship to the corresponding obj
-    setattr(parent, attr_name, obj)
+                "Referenced a sub item $id that does not exist (" +
+                full_attr_name + "). " +
+                "Did you forget to include $set for this sub item?")
+        if not (_is_whitelisted(whitelist_name, whitelist, "set") or
+                (_is_whitelisted(whitelist_name, whitelist, "remove") and
+                 _is_whitelisted(whitelist_name, whitelist, "add"))):
+            raise AlchemyUpdateException(
+                "Can not set " + whitelist_name + " to a different object. " +
+                "The relationship is already set to another object and " +
+                "neither $set nor $remove and $add are whitelisted.")
+        setattr(parent, relationship_name, relation_obj)
+    else:
+        if not (isinstance(update_stack_item, dict) and (
+                update_stack_item.get("$set") in (
+                    True, "True", "true", 1, "1") or
+                update_stack_item.get("~set") in (
+                    True, "True", "true", 1, "1") or
+                update_stack_item.get("$add") in (
+                    True, "True", "true", 1, "1") or
+                update_stack_item.get("~add") in (
+                    True, "True", "true", 1, "1"))):
+            raise AlchemyUpdateException(
+                "Referenced a sub item $id that does not exist (" +
+                full_attr_name + "). " +
+                "Did you forget to include $set or $add for this sub item?")
+        if not (_is_whitelisted(whitelist_name, whitelist, "add") or
+                _is_whitelisted(whitelist_name, whitelist, "set")):
+            raise AlchemyUpdateException(
+                "Can not set " + whitelist_name + " to a different object. " +
+                "Neither $set nor $add are whitelisted.")
+        setattr(parent, relationship_name, relation_obj)
 
 
 def create_resource(db_session, RecordClass, params, whitelist=None,
@@ -480,17 +506,18 @@ def update_resource(db_session, instance, params, whitelist=None,
             db_session,
             album,
             {"artist.$id:artist_id=5.$add": True}
-            whitelist=["artist.$update", "artist.$delete"])
+            whitelist=["artist.$add", "artist.$remove"])
 
-    The `"artist.$update"` allows setting the album.artist relationship
+    The `"artist.$add"` allows setting the album.artist relationship
     to a artist that already exists in the database. For a relationship
     that doesn't use a list, setting the relation to a different object
     implicitly results in the old object (if one exists) to be removed
-    from the parent, thus we must include `"artist.$delete"` in the
-    whitelist.
+    from the parent, thus we must include `"artist.$remove"` in the
+    whitelist. You may also use $set instead to enable both $add and
+    $remove for a non list using relationship.
 
-    Relationships that use lists works lightly differently, as
-    including a $id that isn't already in the list will simply result
+    Relationships that use lists work slightly differently, as
+    including an $id that isn't already in the list will simply result
     in adding that object, but won't result in any others being removed.
 
     To explicitly remove an object from a relation::
@@ -498,8 +525,8 @@ def update_resource(db_session, instance, params, whitelist=None,
         update_resource(
             db_session,
             album,
-            {"artist.$id:artist_id=1.$delete": True}
-            whitelist=["artist.$delete"])
+            {"artist.$id:artist_id=1.$remove": True}
+            whitelist=["artist.$remove"])
 
     In this case, since the `artist` relationship does not use a list,
     `album.artist` would simply be set to `None`. If the relationship
@@ -523,10 +550,11 @@ def update_resource(db_session, instance, params, whitelist=None,
 
                       * tracks.$create
                           Allows the creation of a new track (using
-                          the above mentioned $new notation) and that
-                          new track will be appended to
-                          playlist.tracks
-                      * tracks.$update
+                          the above mentioned $new notation). Whitelist
+                          must also include $add or (for non list using
+                          relationships) $set to allow this item to
+                          actually be added to the relationship.
+                      * tracks.$add
                           Enables appending to the relationship a
                           pre-existing track. So if your
                           update_params includes a field
@@ -534,17 +562,17 @@ def update_resource(db_session, instance, params, whitelist=None,
                           True expression, and a track with id equal
                           to 5 already exists, that track will be
                           added to album.tracks.
-                      * tracks.$delete
+                      * tracks.$remove
                           Enables removing an object from a
                           relationship.
-                          "tracks.$id:track_id=5.$delete" set equal
+                          "tracks.$id:track_id=5.$remove" set equal
                           to a True expression will result in
                           removing the track with id equal to 5
                           from this relationship.
                       * tracks
                           If you include simply the name of the
                           relationship in the whitelist,
-                          $create, $delete, and $update are all
+                          $create, $remove, $add, and $set are all
                           enabled.
 
     :param add_to_session: Defaults to `True`, determines whether
@@ -559,6 +587,45 @@ def update_resource(db_session, instance, params, whitelist=None,
         whitelist,
         add_to_session,
         stack_size_limit)
+
+
+def _is_whitelisted(whitelist_name, whitelist, verb=None):
+    """Return true if whitelist_name is in whitelist.
+
+    :param verb: "add", "remove", "create", or "set".
+
+    """
+    if whitelist is None:
+        return True
+    if isinstance(whitelist, list):
+        if whitelist_name in whitelist:
+            return True
+        if verb is not None:
+            if whitelist_name + "." + "$" + str(verb) in whitelist:
+                return True
+            if whitelist_name + "." + "~" + str(verb) in whitelist:
+                return True
+    return False
+
+
+def _append_to_list_relation(relation_obj, parent, update_stack_item,
+                             full_attr_name, whitelist_name, whitelist):
+    """Add an object to a list relation."""
+    if not (isinstance(update_stack_item, dict) and (
+            update_stack_item.get("$add") in (
+                True, "True", "true", 1, "1") or
+            update_stack_item.get("~add") in (
+                True, "True", "true", 1, "1"))):
+        raise AlchemyUpdateException(
+            "Referenced a sub item $id that does not " +
+            "exist: " + full_attr_name + ". " +
+            "Did you forget to include $add for this " +
+            "sub item?")
+    if not _is_whitelisted(whitelist_name, whitelist, "add"):
+        raise AlchemyUpdateException(
+            "Adding to " + whitelist_name + " is not " +
+            "whitelisted.")
+    parent.append(relation_obj)
 
 
 def _set_record_attrs(db_session, instance, params, whitelist=None,
@@ -588,7 +655,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
             class_attrs = get_class_attributes(
                 type(instance),
                 ".".join([str(prop) for prop in prop_name_stack + [key]]))
-            if key == "$add" or key == "~add":
+            if key in ("$add", "~add", "$set", "~set"):
                 # Add an object to a relation.
                 # Will have been taken care of by previous $id field.
                 # Saying {"Track.$id:TrackId=1.$add": True}
@@ -596,17 +663,15 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                 # item to a relation without having to set another
                 # attribute.
                 pass
-            elif key == "$delete" or key == "~delete":
+            elif key == "$remove" or key == "~remove":
                 if convert_to_alchemy_type(item[key], BOOLEAN):
                     # note: class_attrs doesn't include the current key
                     class_attrs = get_class_attributes(
                         type(instance),
                         ".".join(prop_name_stack))
                     whitelist_name = _get_whitelist_name(key_stack)
-                    if not (whitelist is None or
-                            whitelist_name in whitelist or
-                            whitelist_name + ".$delete" in whitelist or
-                            whitelist_name + ".~delete" in whitelist):
+                    if not _is_whitelisted(whitelist_name, whitelist,
+                                           "remove"):
                         raise AlchemyUpdateException(
                             "Deleting a " + whitelist_name + " is not " +
                             "allowed due to that action not being " +
@@ -633,13 +698,10 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                         # convert_to_alchemy_type failing prior
                         raise AlchemyUpdateException(
                             whitelist_name +
-                            " is not a valid item to be deleted.")
+                            " is not a valid item to be removed.")
             elif key.startswith("$new") or key.startswith("~new"):
                 whitelist_name = _get_whitelist_name(key_stack)
-                if not (whitelist is None or
-                        whitelist_name in whitelist or
-                        whitelist_name + ".$create" in whitelist or
-                        whitelist_name + ".~create" in whitelist):
+                if not _is_whitelisted(whitelist_name, whitelist, "create"):
                     raise AlchemyUpdateException(
                         "Creating a new " + whitelist_name +
                         " is not whitelisted.")
@@ -647,9 +709,8 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                     type(instance),
                     ".".join([str(prop) for prop in prop_name_stack + [key]]))
                 if not (len(class_attrs) >= 2 and
-                        hasattr(
-                            class_attrs[-2],
-                            "property")):    # pragma no cover
+                        hasattr(class_attrs[-2],
+                                "property")):    # pragma no cover
                     # failsafe
                     # An invalid $new gets caught in a few places
                     # before here (get_class_attributes and
@@ -666,18 +727,19 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                 RecordClass = inspect(class_attrs[-2]).mapper.class_
                 sub_instance = RecordClass()
                 if class_attrs[-2].property.uselist:
-                    parent.append(sub_instance)
+                    _append_to_list_relation(
+                        sub_instance, parent, item[key],
+                        get_full_attr_name(key_stack, key),
+                        whitelist_name, whitelist)
                 else:
-                    # want grandparent for non uselist.
-                    # Given album.artist.$id:artist_id=1,
-                    # attr_stack[-2] is album.
                     _set_non_list_relationship_obj(
+                        sub_instance,
                         attr_stack[-2],
                         key_stack[-1],
-                        sub_instance,
+                        item[key],
+                        get_full_attr_name(key_stack, key),
                         whitelist_name,
-                        whitelist
-                    )
+                        whitelist)
                 if add_to_session:
                     db_session.add(sub_instance)
                 key_stack.append(key)
@@ -728,24 +790,6 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             " was removed from the database.")
                 else:
                     # this obj is not in the relationship
-                    # check whitelist if adding to relation is ok
-                    if not (isinstance(item[key], dict) and (
-                            item[key].get("$add") in (
-                                True, "True", "true", 1, "1") or
-                            item[key].get("~add") in (
-                                True, "True", "true", 1, "1"))):
-                        raise AlchemyUpdateException(
-                            "Referenced a sub item $id that does not exist: " +
-                            get_full_attr_name(key_stack, key) + ". Did you "+
-                            "forget to include $add for this sub item?")
-                    whitelist_name = _get_whitelist_name(key_stack)
-                    if not (whitelist is None or
-                            whitelist_name in whitelist or
-                            whitelist_name + ".$update" in whitelist or
-                            whitelist_name + ".~update" in whitelist):
-                        raise AlchemyUpdateException(
-                            "Updating " + whitelist_name + " is not " +
-                            "whitelisted.")
                     # run actual query to get object
                     query = db_session.query(RecordClass)
                     query = _filter_by_primary_key(
@@ -758,20 +802,25 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             "While handling the query, " +
                             get_full_attr_name(key_stack, key) +
                             " was removed from the database.")
+                    whitelist_name = _get_whitelist_name(key_stack)
                     # Add relationship obj to list
                     if class_attrs[-2].property.uselist:
-                        parent.append(relation_obj)
+                        _append_to_list_relation(
+                            relation_obj, parent, item[key],
+                            get_full_attr_name(key_stack, key),
+                            whitelist_name, whitelist)
                     else:
                         # want grandparent for non uselist.
                         # Given album.artist.$id:artist_id=1,
                         # attr_stack[-2] is album.
                         _set_non_list_relationship_obj(
+                            relation_obj,
                             attr_stack[-2],
                             key_stack[-1],
-                            relation_obj,
+                            item[key],
+                            get_full_attr_name(key_stack, key),
                             whitelist_name,
-                            whitelist
-                        )
+                            whitelist)
                 # if no exception has been raised yet,
                 # relation_obj must have a value.
                 if not isinstance(item[key], dict):
@@ -816,7 +865,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             "Attempted to set an object to a raw value.")
         else:
             for key in sorted(item.keys()):
-                # we sort to ensure that actions like $add or $delete
+                # we sort to ensure that actions like $add or $remove
                 # occur first.
                 update_stack.append({key: item[key]})
     return instance

@@ -2,6 +2,20 @@
 Changes
 =======
 
+Release 0.2.0 (in progress)
+===========================
+
+Incompatible changes
+--------------------
+* $create no longer implicitly allows $add.
+* $delete has been changed to $remove.
+* $set added to allow both $add and $remove for a single relationship.
+
+Documentation
+-------------
+* README.rst and docstrings updated with new $remove, $set, and $create rules.
+
+
 Release 0.1.2
 =============
 

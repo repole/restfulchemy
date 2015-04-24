@@ -96,11 +96,12 @@ Again, using Flask and the same API example as above:
                 "composer",
                 "milliseconds",
                 "bytes",
-                "artist.~update",
+                "artist.~add",
                 "artist.~delete",
                 "artist.name",
                 "album.~create",
-                "album.~delete",
+                "album.~add",
+                "album.~remove",
                 "album.name"
             ]
         )
@@ -111,17 +112,25 @@ Again, using Flask and the same API example as above:
 Now say we submit a PUT request to /api/tracks/1 with the query parameters:
 
 -  media_type_id=2
--  artist.~id:artist_id=1.~add=True
+-  artist.~id:artist_id=1.~set=True
 
-   -  Set track.artist to a different artist (the db will be queried for an
-      artist that has an artist_id of 1). Whitelisting “artist.~update”
-      allows this.
+   -  Set track.artist to an already existing artist (the db will be
+      queried for an artist that has an artist_id of 1). Whitelisting
+      “artist.~add” allows this.
    -  In the process of setting the artist to a different one, the old
       one must of course must be removed since this relationship
-      reference does not use a list. This is why “artist.~delete” must
+      reference does not use a list. This is why “artist.~remove” must
       be included in the whitelist. Note that this won’t actually cause
       the artist to be deleted from the database (unless you have some
       cascade delete set up).
+   -  You may instead use "artist.~set" in the whitelist to implicitly
+      allow ~add and ~remove for a non list using relationship.
+   -  The ~set at the end of "artist.~id:artist_id=1.~set=True" works
+      different than ~add would. ~set states to try to overwrite any
+      previous artist value if one existed and if permission is granted
+      via the whitelist. If ~add was used instead, the command would
+      only work if artist previously had no value. For a list relation
+      rather than a non list relation, only ~add is valid.
 
 -  The ~id attribute is used to access a sub-object of a relationship
    field (whether it’s a list based relationship or not does not
@@ -129,10 +138,6 @@ Now say we submit a PUT request to /api/tracks/1 with the query parameters:
 
    -  The format of the ~id attribute is
       ~id:primary_key_col_1=val:primary_key_col_2=val
-   -  The ~add portion says if this is a non list using relationship
-      field, then set the value to the newly referenced object, or if it
-      is a list using relationship field, to append that newly
-      referenced object to the list.
 
 -  album.~new.~add=True
 
@@ -166,17 +171,23 @@ Nearly identical to updating, with a few small differences.
                 "composer",
                 "milliseconds",
                 "bytes",
-                "artist.~update",
-                "artist.~delete",
+                "artist.~set",
                 "artist.name",
                 "album.~create",
-                "album.~delete",
+                "album.~remove",
+                "album.~add",
                 "album.name"
             ]
         )
         db_session.commit()
         # return however you choose
         return ...
+
+$ vs ~
+------
+
+Both $ and ~ work identically and can be used interchangeably.
+~ was included mainly because it is url friendly.
 
 Contributing
 ------------

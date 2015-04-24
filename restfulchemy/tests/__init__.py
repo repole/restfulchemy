@@ -64,12 +64,12 @@ class RESTfulchemyTests(unittest.TestCase):
             album.title == "For Those About To Rock We Salute You" and
             album.artist_id == 1)
 
-
     def test_list_relation_new(self):
         """Make sure that we can add to a list using relationship."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).all()[0]
         update_dict = {
+            "tracks.$new0.$add": "True",
             "tracks.$new0.track_id": "4000",
             "tracks.$new0.name": "Test Track Seven",
             "tracks.$new0.album_id": "347",
@@ -92,6 +92,7 @@ class RESTfulchemyTests(unittest.TestCase):
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).all()[0]
         update_dict = {
+            "tracks.$new0.$add": "True",
             "tracks.$new0.track_id": "4000",
             "tracks.$new0.name": "Test Track Seven",
             "tracks.$new0.album_id": "347",
@@ -107,6 +108,7 @@ class RESTfulchemyTests(unittest.TestCase):
             playlist,
             update_dict,
             ["tracks.$create",
+             "tracks.$add",
              "tracks.track_id",
              "tracks.name",
              "tracks.album_id",
@@ -125,6 +127,7 @@ class RESTfulchemyTests(unittest.TestCase):
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).all()[0]
         update_dict = {
+            "tracks.$new0.$add": "True",
             "tracks.$new0.track_id": "4000",
             "tracks.$new0.name": "Test Track Seven",
             "tracks.$new0.album_id": "347",
@@ -158,6 +161,7 @@ class RESTfulchemyTests(unittest.TestCase):
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).all()[0]
         update_dict = {
+            "tracks.$new0.$add": "True",
             "tracks.$new0.track_id": "4000",
             "tracks.$new0.name": "Test Track Seven",
             "tracks.$new0.album_id": "347",
@@ -196,6 +200,18 @@ class RESTfulchemyTests(unittest.TestCase):
         )
         self.assertTrue(len(playlist.tracks) == 2)
 
+    def test_list_relation_add_item_no_add_fail(self):
+        """Make sure that we can add an item to a list relation."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            {"tracks.$id:track_id=1.~add": False}
+        )
+
     def test_list_relation_add_item_whitelist(self):
         """Make sure we can add an item to a whitelisted relation."""
         playlist = self.db_session.query(models.Playlist).filter(
@@ -204,7 +220,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             playlist,
             {"tracks.$id:track_id=1.$add": True},
-            ["tracks.$update"]
+            ["tracks.$add"]
         )
         self.assertTrue(len(playlist.tracks) == 2)
 
@@ -254,42 +270,42 @@ class RESTfulchemyTests(unittest.TestCase):
             ["tracks.name"])
         self.assertTrue(playlist.tracks[0].name == "Test Track Seven")
 
-    def test_list_relation_delete_item(self):
-        """Make sure that we can delete an item from a list relation."""
+    def test_list_relation_remove_item(self):
+        """Make sure that we can remove an item from a list relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         update_resource(
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=597.$delete": True}
+            {"tracks.$id:track_id=597.$remove": True}
         )
         self.assertTrue(len(playlist.tracks) == 0)
 
-    def test_list_relation_delete_item_whitelist(self):
-        """Make sure we can delete an item in a whitelisted relation."""
+    def test_list_relation_remove_item_whitelist(self):
+        """Make sure we can remove an item in a whitelisted relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         update_resource(
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=597.$delete": True},
-            ["tracks.$delete"]
+            {"tracks.$id:track_id=597.$remove": True},
+            ["tracks.$remove"]
         )
         self.assertTrue(len(playlist.tracks) == 0)
 
-    def test_list_relation_delete_item_generic_whitelist(self):
+    def test_list_relation_remove_item_generic_whitelist(self):
         """Ensure generic whitelisting works for deleting a relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         update_resource(
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=597.$delete": True},
+            {"tracks.$id:track_id=597.$remove": True},
             ["tracks"]
         )
         self.assertTrue(len(playlist.tracks) == 0)
 
-    def test_list_relation_delete_item_whitelist_fail(self):
+    def test_list_relation_remove_item_whitelist_fail(self):
         """Ensure whitelisting rightly fails for deleting a relation."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
@@ -298,7 +314,7 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=597.$delete": True},
+            {"tracks.$id:track_id=597.$remove": True},
             []
         )
 
@@ -352,8 +368,41 @@ class RESTfulchemyTests(unittest.TestCase):
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=3.$add": True})
+            {"artist.$id:artist_id=3.$set": True})
         self.assertTrue(album.artist.name == "Aerosmith")
+
+    def test_set_empty_single_relation_item(self):
+        """Make sure that an empty non-list relation can be set."""
+        track = self.db_session.query(models.Track).filter(
+            models.Track.track_id == 1).all()[0]
+        track.genre = None
+        update_resource(
+            self.db_session,
+            track,
+            {"genre.$id:genre_id=1.$set": True})
+        self.assertTrue(track.genre.name == "Rock")
+
+    def test_set_empty_single_relation_item_no_set_fail(self):
+        """Ensure no .$set causes failure on null non list relation."""
+        employee = self.db_session.query(models.Employee).filter(
+            models.Employee.employee_id == 1).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            employee,
+            {"parent.$id:employee_id=5.$set": False})
+
+    def test_set_single_relation_item_no_set_fail(self):
+        """Ensure no .$set causes a failure on non list relation."""
+        album = self.db_session.query(models.Album).filter(
+            models.Album.album_id == 1).all()[0]
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            album,
+            {"artist.$id:artist_id=3.$set": False})
 
     def test_set_single_relation_item_whitelist(self):
         """Make sure a whitelisted non-list relation can be set."""
@@ -362,8 +411,8 @@ class RESTfulchemyTests(unittest.TestCase):
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=3.$add": True},
-            ["artist.$delete", "artist.$update"])
+            {"artist.$id:artist_id=3.$set": True},
+            ["artist.~set"])
         self.assertTrue(album.artist.name == "Aerosmith")
 
     def test_set_single_relation_item_generic_whitelist(self):
@@ -373,7 +422,7 @@ class RESTfulchemyTests(unittest.TestCase):
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=3.$add": True},
+            {"artist.$id:artist_id=3.$set": True},
             ["artist"])
         self.assertTrue(album.artist.name == "Aerosmith")
 
@@ -386,20 +435,20 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             album,
-            {"artist.$id:artist_id=3.$add": True},
+            {"artist.$id:artist_id=3.$set": True},
             [])
 
-    def test_set_single_relation_item_whitelist_delete_fail(self):
-        """Setting a single relation fails - no $delete whitelist."""
-        album = self.db_session.query(models.Album).filter(
-            models.Album.album_id == 1).all()[0]
+    def test_set_empty_single_relation_item_whitelist_fail(self):
+        """Ensure setting empty non whitelisted relation item fails."""
+        employee = self.db_session.query(models.Employee).filter(
+            models.Employee.employee_id == 1).first()
         self.assertRaises(
             AlchemyUpdateException,
             update_resource,
             self.db_session,
-            album,
-            {"artist.$id:artist_id=3.$add": True},
-            ["artist.$update"])
+            employee,
+            {"parent.$id:employee_id=5.$set": True},
+            [])
 
     def test_new_single_relation_item(self):
         """Make sure that a non-list relation can be created."""
@@ -409,7 +458,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {
-                "artist.$new.$add": True,
+                "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             })
         self.assertTrue(album.artist.name == "Nick Repole")
@@ -422,10 +471,10 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {
-                "artist.$new.$add": True,
+                "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             },
-            ["artist.$delete", "artist.$create"])
+            ["artist.$create", "artist.$set"])
         self.assertTrue(album.artist.name == "Nick Repole")
 
     def test_new_single_relation_item_generic_whitelist(self):
@@ -436,7 +485,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {
-                "artist.$new.$add": True,
+                "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             },
             ["artist"])
@@ -452,7 +501,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {
-                "artist.$new.$add": True,
+                "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             },
             ["artist.name"])
@@ -509,8 +558,8 @@ class RESTfulchemyTests(unittest.TestCase):
                 "album_id.$id:artist_id=1.$add": True
             })
 
-    def test_invalid_delete(self):
-        """Make sure that a %delete on a non relation item errors."""
+    def test_invalid_remove(self):
+        """Make sure that a %remove on a non relation item errors."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
@@ -519,7 +568,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {
-                "album_id.$delete": True
+                "album_id.$remove": True
             })
 
     def test_invalid_set_obj_to_raw_value(self):
@@ -535,18 +584,18 @@ class RESTfulchemyTests(unittest.TestCase):
                 "artist": 5
             })
 
-    def test_delete_single_relation_item(self):
-        """Make sure a non-list relation can be deleted."""
+    def test_remove_single_relation_item(self):
+        """Make sure a non-list relation can be removed."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=1.$delete": True})
+            {"artist.$id:artist_id=1.$remove": True})
         self.assertTrue(album.artist is None)
 
-    def test_delete_single_relation_item_bad_id(self):
-        """Make sure a non matching $id can't be deleted."""
+    def test_remove_single_relation_item_bad_id(self):
+        """Make sure a non matching $id can't be removed."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
@@ -554,32 +603,32 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             album,
-            {"artist.$id:artist_id=3.$delete": True})
+            {"artist.$id:artist_id=3.$remove": True})
 
-    def test_delete_single_relation_item_whitelist(self):
-        """Make sure a whitelisted non-list relation can be deleted."""
+    def test_remove_single_relation_item_whitelist(self):
+        """Make sure a whitelisted non-list relation can be removed."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=1.$delete": True},
-            ["artist.$delete"])
+            {"artist.$id:artist_id=1.$remove": True},
+            ["artist.$remove"])
         self.assertTrue(album.artist is None)
 
-    def test_delete_single_relation_item_generic_whitelist(self):
+    def test_remove_single_relation_item_generic_whitelist(self):
         """Ensure generic whitelisted non-list relation is deletable."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         update_resource(
             self.db_session,
             album,
-            {"artist.$id:artist_id=1.$delete": True},
+            {"artist.$id:artist_id=1.$remove": True},
             ["artist"])
         self.assertTrue(album.artist is None)
 
-    def test_delete_single_relation_item_whitelist_fail(self):
-        """Ensure invalid whitelist fails to delete single relation."""
+    def test_remove_single_relation_item_whitelist_fail(self):
+        """Ensure invalid whitelist fails to remove single relation."""
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
@@ -587,8 +636,8 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             album,
-            {"artist.$id:artist_id=1.$delete": True},
-            ["artist.$update"])
+            {"artist.$id:artist_id=1.$remove": True},
+            ["artist.name"])
 
     def test_get_class_attributes_invalid_start_fail(self):
         """Ensure get_class_attributes fails - no leading class name."""
@@ -621,6 +670,7 @@ class RESTfulchemyTests(unittest.TestCase):
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).all()[0]
         update_dict = {
+            "tracks.$new0.$add": "True",
             "tracks.$new0.track_id": "4000",
             "tracks.$new0.name": "Test Track Seven",
             "tracks.$new0.album_id": "347",

@@ -205,7 +205,7 @@ MIT
 .. |Coverage Status| image:: https://coveralls.io/repos/repole/restfulchemy/badge.svg?branch=master
    :target: https://coveralls.io/r/repole/restfulchemy?branch=master
 .. |Docs| image:: https://readthedocs.org/projects/restfulchemy/badge/?version=latest
-   :target: https://readthedocs.org/projects/restfulchemy/?badge=latest
+   :target: http://restfulchemy.readthedocs.org/en/latest/
 .. |Version| image:: https://pypip.in/version/restfulchemy/badge.svg
    :target: https://pypi.python.org/pypi/restfulchemy/
    :alt: Latest Version

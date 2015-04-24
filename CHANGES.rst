@@ -2,7 +2,7 @@
 Changes
 =======
 
-Release 0.2.0 (in progress)
+Release 0.2.0
 ===========================
 
 Incompatible changes

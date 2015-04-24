@@ -20,7 +20,7 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.2.0.dev0"
+__version__ = "0.2.0"
 
 
 class AlchemyUpdateException(Exception):

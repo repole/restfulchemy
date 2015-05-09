@@ -2,6 +2,16 @@
 Changes
 =======
 
+Release 0.2.1
+===========================
+
+Features added
+--------------
+* Added only_parse_complex as an optional parameter for parse_filters. 
+  Useful in bulk update situations where standard query params are used
+  for update statements rather than filters.
+
+
 Release 0.2.0
 ===========================
 

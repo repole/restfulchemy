@@ -20,7 +20,7 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 class AlchemyUpdateException(Exception):
@@ -76,7 +76,7 @@ def get_class_attributes(RecordClass, attr_name):
     return class_attrs
 
 
-def parse_filters(RecordClass, query_params):
+def parse_filters(RecordClass, query_params, only_parse_complex=False):
     """Convert request params into MQLAlchemy friendly search."""
     if not isinstance(query_params, dict):
         # invalid filters provided, treat as if none were supplied.
@@ -100,7 +100,7 @@ def parse_filters(RecordClass, query_params):
                 except (TypeError, ValueError):
                     raise InvalidMQLException(
                         key + " must be set to a valid json dumped dict.")
-        else:
+        elif not only_parse_complex:
             # how much to remove from end of key to get the attr_name.
             # default values:
             chop_len = 0

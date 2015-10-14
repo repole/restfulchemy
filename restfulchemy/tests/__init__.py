@@ -54,6 +54,29 @@ class RESTfulchemyTests(unittest.TestCase):
         update_resource(self.db_session, album, {"title": "TEST"})
         self.assertTrue(album.title == "TEST")
 
+    def test_simple_whitelist(self):
+        """Make sure that a simple obj update works with a whitelist."""
+        album = self.db_session.query(models.Album).filter(
+            models.Album.album_id == 1).all()[0]
+        update_resource(
+            self.db_session,
+            album,
+            {"title": "TEST"},
+            whitelist=["title"])
+        self.assertTrue(album.title == "TEST")
+
+    def test_simple_whitelist_fail(self):
+        """Make sure a simple update fails with an empty whitelist."""
+        album = self.db_session.query(models.Album).filter(
+            models.Album.album_id == 1).all()[0]
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            album,
+            {"title": "TEST"},
+            whitelist=[])
+
     def test_null_update(self):
         """Make sure that a obj update works with no update params."""
         album = self.db_session.query(models.Album).filter(
@@ -121,6 +144,76 @@ class RESTfulchemyTests(unittest.TestCase):
         )
         self.assertTrue(len(playlist.tracks) == 2 and
                         playlist.tracks[1].composer == "Nick Repole")
+
+    def test_list_relation_new_only_whitelist(self):
+        """Test that whitelisting new attr updates works."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).all()[0]
+        update_dict = {
+            "tracks.$new0.$add": "True",
+            "tracks.$new0.track_id": "4000",
+            "tracks.$new0.name": "Test Track Seven",
+            "tracks.$new0.album_id": "347",
+            "tracks.$new0.media_type_id": "2",
+            "tracks.$new0.genre_id": "10",
+            "tracks.$new0.composer": "Nick Repole",
+            "tracks.$new0.milliseconds": "206009",
+            "tracks.$new0.bytes": "3305166",
+            "tracks.$new0.unit_price": "0.99",
+        }
+        update_resource(
+            self.db_session,
+            playlist,
+            update_dict,
+            ["tracks.$create",
+             "tracks.$add",
+             "tracks.$new.track_id",
+             "tracks.$new.name",
+             "tracks.$new.album_id",
+             "tracks.$new.media_type_id",
+             "tracks.$new.genre_id",
+             "tracks.$new.composer",
+             "tracks.$new.milliseconds",
+             "tracks.$new.bytes",
+             "tracks.$new.unit_price"]
+        )
+        self.assertTrue(len(playlist.tracks) == 2 and
+                        playlist.tracks[1].composer == "Nick Repole")
+
+    def test_list_relation_new_only_whitelist_fail(self):
+        """Test that not whitelisting new attr updates fails."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).all()[0]
+        update_dict = {
+            "tracks.$new0.$add": "True",
+            "tracks.$new0.track_id": "4000",
+            "tracks.$new0.name": "Test Track Seven",
+            "tracks.$new0.album_id": "347",
+            "tracks.$new0.media_type_id": "2",
+            "tracks.$new0.genre_id": "10",
+            "tracks.$new0.composer": "Nick Repole",
+            "tracks.$new0.milliseconds": "206009",
+            "tracks.$new0.bytes": "3305166",
+            "tracks.$new0.unit_price": "0.99",
+        }
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            update_dict,
+            ["tracks.$create",
+             "tracks.$add",
+             "tracks.$id.track_id",
+             "tracks.$id.name",
+             "tracks.$id.album_id",
+             "tracks.$id.media_type_id",
+             "tracks.$id.genre_id",
+             "tracks.$id.composer",
+             "tracks.$id.milliseconds",
+             "tracks.$id.bytes",
+             "tracks.$id.unit_price"]
+        )
 
     def test_list_relation_new_generic_whitelist(self):
         """Make sure generic whitelisting works for list relations."""
@@ -200,8 +293,30 @@ class RESTfulchemyTests(unittest.TestCase):
         )
         self.assertTrue(len(playlist.tracks) == 2)
 
+    def test_bad_id_data_fail(self):
+        """Make sure that invalid $id data causes failure."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            {"tracks.$id:track_id=abc.~add": True})
+
+    def test_bad_id_name_fail(self):
+        """Make sure that a bad given $id causes failure."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            {"tracks.$id:name=abc.~add": True})
+
     def test_list_relation_add_item_no_add_fail(self):
-        """Make sure that we can add an item to a list relation."""
+        """Make sure that adding an item to a list relation fails."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         self.assertRaises(
@@ -213,7 +328,7 @@ class RESTfulchemyTests(unittest.TestCase):
         )
 
     def test_list_relation_add_item_whitelist(self):
-        """Make sure we can add an item to a whitelisted relation."""
+        """Make sure whitelisted adding to a list relation works."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         update_resource(
@@ -225,7 +340,7 @@ class RESTfulchemyTests(unittest.TestCase):
         self.assertTrue(len(playlist.tracks) == 2)
 
     def test_list_relation_add_item_generic_whitelist(self):
-        """Ensure generic whitelisting works for updating a relation."""
+        """Ensure generic whitelisted adding to list relation works."""
         playlist = self.db_session.query(models.Playlist).filter(
             models.Playlist.playlist_id == 18).first()
         update_resource(
@@ -412,7 +527,7 @@ class RESTfulchemyTests(unittest.TestCase):
             self.db_session,
             album,
             {"artist.$id:artist_id=3.$set": True},
-            ["artist.~set"])
+            ["artist.$set"])
         self.assertTrue(album.artist.name == "Aerosmith")
 
     def test_set_single_relation_item_generic_whitelist(self):
@@ -474,7 +589,7 @@ class RESTfulchemyTests(unittest.TestCase):
                 "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             },
-            ["artist.$create", "artist.$set"])
+            ["artist.$create", "artist.$set", "artist.name"])
         self.assertTrue(album.artist.name == "Nick Repole")
 
     def test_new_single_relation_item_generic_whitelist(self):
@@ -488,7 +603,7 @@ class RESTfulchemyTests(unittest.TestCase):
                 "artist.$new.$set": True,
                 "artist.$new.name": "Nick Repole",
             },
-            ["artist"])
+            ["artist", "artist.name"])
         self.assertTrue(album.artist.name == "Nick Repole")
 
     def test_new_single_relation_item_whitelist_fail(self):
@@ -511,7 +626,7 @@ class RESTfulchemyTests(unittest.TestCase):
         album = self.db_session.query(AlbumPlus).filter(
             AlbumPlus.album_id == 1).all()[0]
         self.assertRaises(
-            AttributeError,
+            AlchemyUpdateException,
             update_resource,
             self.db_session,
             album,
@@ -524,7 +639,7 @@ class RESTfulchemyTests(unittest.TestCase):
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
-            TypeError,
+            AlchemyUpdateException,
             update_resource,
             self.db_session,
             album,
@@ -537,7 +652,7 @@ class RESTfulchemyTests(unittest.TestCase):
         album = self.db_session.query(AlbumPlus).filter(
             AlbumPlus.album_id == 1).all()[0]
         self.assertRaises(
-            AttributeError,
+            AlchemyUpdateException,
             update_resource,
             self.db_session,
             album,
@@ -550,7 +665,7 @@ class RESTfulchemyTests(unittest.TestCase):
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
-            TypeError,
+            AlchemyUpdateException,
             update_resource,
             self.db_session,
             album,
@@ -563,7 +678,7 @@ class RESTfulchemyTests(unittest.TestCase):
         album = self.db_session.query(models.Album).filter(
             models.Album.album_id == 1).all()[0]
         self.assertRaises(
-            TypeError,
+            AlchemyUpdateException,
             update_resource,
             self.db_session,
             album,

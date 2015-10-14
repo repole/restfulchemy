@@ -59,3 +59,10 @@ target/
 
 # SQLITE
 *.sqlite-journal
+
+# SASS
+.sass-cache/
+
+# Project Specific
+libs/
+user_data/

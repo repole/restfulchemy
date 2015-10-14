@@ -2,8 +2,30 @@
 Changes
 =======
 
+Release 0.3.0  (in progress)
+============================
+
+Features added
+--------------
+* Improved error reporting on exceptions. Any AlchemyUpdateException
+  raised now includes a dict of fieldnames with lists of errors for
+  that field.
+* Ability to validate an update prior to executing it.
+* Can now whitelist setting specifically only newly created object
+  attributes within a relationship without having to simultaneously
+  whitelist setting prior existing object's attributes. In other
+  words, whitelisting 'tracks.$new.track_id' would allow the track_id
+  of a newly created track for an album to be set, without giving
+  permission at the same time to change track_id for any already
+  existing track on that album.
+
+Incompatible changes
+--------------------
+* $id field syntax overhauled to use only url safe characters.
+
+
 Release 0.2.1
-===========================
+=============
 
 Features added
 --------------
@@ -13,7 +35,7 @@ Features added
 
 
 Release 0.2.0
-===========================
+=============
 
 Incompatible changes
 --------------------

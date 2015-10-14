@@ -1,14 +1,25 @@
 RESTfulchemy
 ============
 
-|Build Status| |Coverage Status| |Docs| |License| |Python Versions|
-|Python Implementations| |Format|
+|Build Status| |Coverage Status| |Docs|
 
 Get, update, and create SQLAlchemy objects using query string parameters.
 
 Shares some similarities with projects like Django-Tastypie and Flask-RESTful,
 but depends on the SQLAlchemy ORM and otherwise leaves more decisions up to
 the user.
+
+Current Status
+--------------
+
+Broken! The $id field described below needs to be put into a url safe
+format. A fix for that should be coming soon, but I'm still deciding
+on exactly how I want to format things.
+
+This is still very much an experimental library. Definitely appreciate
+any interest, and would love any input or feedback, but it isn't wise
+to use this in a serious project at this point.
+
 
 Getting
 -------
@@ -186,8 +197,11 @@ Nearly identical to updating, with a few small differences.
 $ vs ~
 ------
 
-Both $ and ~ work identically and can be used interchangeably.
-~ was included mainly because it is url friendly.
+Both $ and ~ work identically in most places and can be used
+interchangeably. The one exception to that is when getting/querying
+using MongoDB style syntax and operators, $ must be used rather than ~.
+The tilde (~) was included as in alternative elsewhere to be more url
+friendly.
 
 Contributing
 ------------
@@ -206,18 +220,3 @@ MIT
    :target: https://coveralls.io/r/repole/restfulchemy?branch=master
 .. |Docs| image:: https://readthedocs.org/projects/restfulchemy/badge/?version=latest
    :target: http://restfulchemy.readthedocs.org/en/latest/
-.. |Version| image:: https://pypip.in/version/restfulchemy/badge.svg
-   :target: https://pypi.python.org/pypi/restfulchemy/
-   :alt: Latest Version
-.. |Python Versions| image:: https://pypip.in/py_versions/restfulchemy/badge.svg
-   :target: https://pypi.python.org/pypi/restfulchemy/
-   :alt: Supported Python versions
-.. |Python Implementations| image:: https://pypip.in/implementation/restfulchemy/badge.svg
-   :target: https://pypi.python.org/pypi/restfulchemy/
-   :alt: Supported Python implementations
-.. |License| image:: https://pypip.in/license/restfulchemy/badge.svg
-   :target: https://pypi.python.org/pypi/restfulchemy/
-   :alt: License
-.. |Format| image:: https://pypip.in/format/restfulchemy/badge.svg
-   :target: https://pypi.python.org/pypi/restfulchemy/
-   :alt: Download format

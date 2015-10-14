@@ -3,7 +3,7 @@
     restfulchemy.__init__
     ~~~~~~~~~~~~~~~~~~~~~
 
-    A set of utility functions for working with SQLAlchemy.
+    An implementation of the publish-subscribe pattern for snakeMQ.
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
@@ -20,7 +20,9 @@ from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
 import json
 
-__version__ = "0.2.1"
+__version__ = "0.3.0dev"
+
+_ = str
 
 
 class AlchemyUpdateException(Exception):
@@ -231,9 +233,13 @@ def apply_offset_and_limit(query, query_params, page=None, page_max_size=None):
 
 def _get_whitelist_name(name_stack):
     """Returns a joined name_stack, but removes $new and $id."""
-    names = [attr for attr in name_stack if not (
-        attr.startswith("$new") or attr.startswith("$id") or
-        attr.startswith("~new") or attr.startswith("~id"))]
+    names = []
+    for attr in name_stack:
+        if attr.startswith(("$new", "~new", "_new_")):
+            attr = "$new"
+        elif attr.startswith(("$id", "~id", "_id_")):
+            attr = "$id"
+        names.append(attr)
     return ".".join([str(name) for name in names])
 
 
@@ -289,22 +295,28 @@ def _split_dict_params(update_params):
 
 
 def _filter_by_primary_key(query, RecordClass, primary_key_names,
-                           primary_key_data, full_attr_name):
+                           primary_key_data, full_attr_name, error_dict, _):
     """Generate a query that filters on primary key value(s)."""
     for primary_key_name in primary_key_names:
         if primary_key_name in primary_key_data:
-            primary_key_attr = getattr(
-                RecordClass, primary_key_name)
-            query = query.filter(
-                primary_key_attr ==
-                convert_to_alchemy_type(
+            primary_key_attr = getattr(RecordClass, primary_key_name)
+            try:
+                primary_key_value = convert_to_alchemy_type(
                     primary_key_data[primary_key_name],
-                    type(primary_key_attr.type)
-                ))
+                    type(primary_key_attr.type))
+            except (TypeError, ValueError):
+                _append_error(
+                    error_dict,
+                    full_attr_name,
+                    _("Invalid $id primary key value."))
+                return None
+            query = query.filter(primary_key_attr == primary_key_value)
         else:
-            raise AlchemyUpdateException(
-                "Invalid $id primary key field: " +
-                full_attr_name)
+            _append_error(
+                error_dict,
+                full_attr_name,
+                _("Invalid $id primary key field."))
+            return None
     return query
 
 
@@ -336,7 +348,8 @@ def get_primary_key_dict(id_string):
 
 def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
                                    update_stack_item, full_attr_name,
-                                   whitelist_name, whitelist):
+                                   whitelist_name, whitelist, error_dict,
+                                   validation_mode, _):
     """Set a non list using relationship to a given object."""
     if getattr(parent, relationship_name) is not None:
         if not (isinstance(update_stack_item, dict) and (
@@ -344,18 +357,25 @@ def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
                     True, "True", "true", 1, "1") or
                 update_stack_item.get("~set") in (
                     True, "True", "true", 1, "1"))):
-            raise AlchemyUpdateException(
-                "Referenced a sub item $id that does not exist (" +
-                full_attr_name + "). " +
-                "Did you forget to include $set for this sub item?")
+            _append_error(
+                error_dict,
+                full_attr_name,
+                _("Referenced a sub item $id that does not exist." +
+                  "Did you forget to include $set for this sub item?"))
+            return False
         if not (_is_whitelisted(whitelist_name, whitelist, "set") or
                 (_is_whitelisted(whitelist_name, whitelist, "remove") and
                  _is_whitelisted(whitelist_name, whitelist, "add"))):
-            raise AlchemyUpdateException(
-                "Can not set " + whitelist_name + " to a different object. " +
-                "The relationship is already set to another object and " +
-                "neither $set nor $remove and $add are whitelisted.")
-        setattr(parent, relationship_name, relation_obj)
+            _append_error(
+                error_dict,
+                full_attr_name,
+                _("Can not set this relation to a different object. " +
+                  "The relationship is already set to another object and " +
+                  "neither $set nor $remove and $add are whitelisted."))
+            return False
+        if not validation_mode:
+            setattr(parent, relationship_name, relation_obj)
+        return True
     else:
         if not (isinstance(update_stack_item, dict) and (
                 update_stack_item.get("$set") in (
@@ -366,16 +386,23 @@ def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
                     True, "True", "true", 1, "1") or
                 update_stack_item.get("~add") in (
                     True, "True", "true", 1, "1"))):
-            raise AlchemyUpdateException(
-                "Referenced a sub item $id that does not exist (" +
-                full_attr_name + "). " +
-                "Did you forget to include $set or $add for this sub item?")
+            _append_error(
+                error_dict,
+                full_attr_name,
+                _("Referenced a sub item $id that does not exist. " +
+                  "Did you forget to include $set or $add for this sub item?"))
+            return False
         if not (_is_whitelisted(whitelist_name, whitelist, "add") or
                 _is_whitelisted(whitelist_name, whitelist, "set")):
-            raise AlchemyUpdateException(
-                "Can not set " + whitelist_name + " to a different object. " +
-                "Neither $set nor $add are whitelisted.")
-        setattr(parent, relationship_name, relation_obj)
+            _append_error(
+                error_dict,
+                full_attr_name,
+                _("Can not set this relation to a different object. " +
+                  "Neither $set nor $add are whitelisted."))
+            return False
+        if not validation_mode:
+            setattr(parent, relationship_name, relation_obj)
+        return True
 
 
 def create_resource(db_session, RecordClass, params, whitelist=None,
@@ -598,38 +625,57 @@ def _is_whitelisted(whitelist_name, whitelist, verb=None):
     if whitelist is None:
         return True
     if isinstance(whitelist, list):
-        if whitelist_name in whitelist:
+        short_whitelist_name = whitelist_name
+        for attr in ["$id", "$new"]:
+            short_whitelist_name = short_whitelist_name.replace("." + attr, "")
+        if whitelist_name in whitelist or short_whitelist_name in whitelist:
             return True
         if verb is not None:
-            if whitelist_name + "." + "$" + str(verb) in whitelist:
+            money_notation = ".$" + str(verb)
+            if whitelist_name + money_notation in whitelist:
                 return True
-            if whitelist_name + "." + "~" + str(verb) in whitelist:
+            elif short_whitelist_name + money_notation in whitelist:
                 return True
     return False
 
 
 def _append_to_list_relation(relation_obj, parent, update_stack_item,
-                             full_attr_name, whitelist_name, whitelist):
+                             full_attr_name, whitelist_name, whitelist,
+                             error_dict, validation_mode=False, _=str):
     """Add an object to a list relation."""
     if not (isinstance(update_stack_item, dict) and (
             update_stack_item.get("$add") in (
                 True, "True", "true", 1, "1") or
             update_stack_item.get("~add") in (
                 True, "True", "true", 1, "1"))):
-        raise AlchemyUpdateException(
-            "Referenced a sub item $id that does not " +
-            "exist: " + full_attr_name + ". " +
-            "Did you forget to include $add for this " +
-            "sub item?")
+        _append_error(
+            error_dict,
+            full_attr_name,
+            _("This sub-item is not currently included in this " +
+              "relationship. Were you attempting to add a new item and "
+              "forgot to include an $add field?"))
+        return False
     if not _is_whitelisted(whitelist_name, whitelist, "add"):
-        raise AlchemyUpdateException(
-            "Adding to " + whitelist_name + " is not " +
-            "whitelisted.")
-    parent.append(relation_obj)
+        _append_error(
+            error_dict,
+            full_attr_name,
+            _("Adding an object to this relation is not whitelisted"))
+        return False
+    if not validation_mode:
+        parent.append(relation_obj)
+    return True
+
+
+def _append_error(error_dict, field_name, message):
+    """Appends the provided error message to a dictionary."""
+    if not isinstance(error_dict.get(field_name), list):
+        error_dict[field_name] = list()
+    error_dict[field_name].append(message)
 
 
 def _set_record_attrs(db_session, instance, params, whitelist=None,
-                      add_to_session=True, stack_size_limit=None):
+                      add_to_session=True, stack_size_limit=None,
+                      validation_mode=False):
     """Set a SQLAlchemy model instance from a dictionary of params."""
     split_params = _split_dict_params(params)
     # process the newly formatted query params into a series of updates
@@ -638,10 +684,10 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
     key_stack = list()
     attr_stack = list()
     attr_stack.append(instance)
+    error_dict = {}
     while update_stack:
         if stack_size_limit and len(update_stack) > stack_size_limit:
-            raise AlchemyUpdateException(
-                "This update is too complex.")
+            raise AlchemyUpdateException("This update is too complex.")
         item = update_stack.pop()
         if item == "POP":
             attr_stack.pop()
@@ -652,9 +698,18 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
             # get property types
             prop_name_stack = list(key_stack)
             prop_name_stack.insert(0, type(instance).__name__)
-            class_attrs = get_class_attributes(
-                type(instance),
-                ".".join([str(prop) for prop in prop_name_stack + [key]]))
+            try:
+                class_attrs = get_class_attributes(
+                    type(instance),
+                    ".".join([str(prop) for prop in prop_name_stack + [key]]))
+            except AttributeError:
+                _append_error(
+                    error_dict,
+                    get_full_attr_name(key_stack, key),
+                    _("Invalid attribute name."))
+                # any operation on this attribute or its children
+                # will be invalid so continue to next item in stack.
+                continue
             if key in ("$add", "~add", "$set", "~set"):
                 # Add an object to a relation.
                 # Will have been taken care of by previous $id field.
@@ -664,185 +719,265 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                 # attribute.
                 pass
             elif key == "$remove" or key == "~remove":
-                if convert_to_alchemy_type(item[key], BOOLEAN):
-                    # note: class_attrs doesn't include the current key
-                    class_attrs = get_class_attributes(
-                        type(instance),
-                        ".".join(prop_name_stack))
+                try:
+                    should_remove = convert_to_alchemy_type(
+                        item[key], BOOLEAN)
+                except ValueError:    # pragma no cover
+                    # convert_to_alchemy_type should never
+                    # fail with BOOLEAN, but just incase...
+                    should_remove = False
+                if should_remove:
                     whitelist_name = _get_whitelist_name(key_stack)
                     if not _is_whitelisted(whitelist_name, whitelist,
                                            "remove"):
-                        raise AlchemyUpdateException(
-                            "Deleting a " + whitelist_name + " is not " +
-                            "allowed due to that action not being " +
-                            "whitelisted.")
-                    if (len(class_attrs) >= 3 and
-                            hasattr(class_attrs[-2], "property") and
-                            class_attrs[-2].property.uselist is False):
-                        # Delete single entity relationship obj
-                        grandparent = attr_stack[-3]
-                        # key_stack[-1] should be the key name of the
-                        # relationship obj
-                        setattr(grandparent, key_stack[-2], None)
-                        # replace the old parent with None now
-                        attr_stack.pop()
-                        attr_stack.append(None)
-                    elif (len(class_attrs) >= 2 and
-                          hasattr(class_attrs[-2], "property") and
-                          class_attrs[-2].property.uselist):
-                        # Delete relationship obj from list
-                        grandparent = attr_stack[-2]
-                        grandparent.remove(parent)
-                    else:    # pragma no cover
-                        # failsafe - should never get here due to
-                        # convert_to_alchemy_type failing prior
-                        raise AlchemyUpdateException(
-                            whitelist_name +
-                            " is not a valid item to be removed.")
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("Removing this relation is not allowed."))
+                    else:
+                        if (len(class_attrs) >= 4 and
+                                hasattr(class_attrs[-3], "property") and
+                                class_attrs[-3].property.uselist is False):
+                            # Delete single entity relationship obj
+                            grandparent = attr_stack[-3]
+                            # key_stack[-1] should be the key name of the
+                            # relationship obj
+                            if not validation_mode:
+                                setattr(grandparent, key_stack[-2], None)
+                            # replace the old parent with None now
+                            attr_stack.pop()
+                            attr_stack.append(None)
+                        elif (len(class_attrs) >= 3 and
+                              hasattr(class_attrs[-3], "property") and
+                              class_attrs[-3].property.uselist):
+                            # Delete relationship obj from list
+                            grandparent = attr_stack[-2]
+                            if not validation_mode:
+                                grandparent.remove(parent)
+                        else:    # pragma no cover
+                            # failsafe - should never get here due to
+                            # convert_to_alchemy_type failing prior
+                            _append_error(
+                                error_dict,
+                                get_full_attr_name(key_stack, key),
+                                _("Removing this relation is not a valid "
+                                  "action."))
             elif key.startswith("$new") or key.startswith("~new"):
                 whitelist_name = _get_whitelist_name(key_stack)
                 if not _is_whitelisted(whitelist_name, whitelist, "create"):
-                    raise AlchemyUpdateException(
-                        "Creating a new " + whitelist_name +
-                        " is not whitelisted.")
-                class_attrs = get_class_attributes(
-                    type(instance),
-                    ".".join([str(prop) for prop in prop_name_stack + [key]]))
-                if not (len(class_attrs) >= 2 and
-                        hasattr(class_attrs[-2],
-                                "property")):    # pragma no cover
-                    # failsafe
-                    # An invalid $new gets caught in a few places
-                    # before here (get_class_attributes and
-                    # convert_to_alchemy_type), so it shouldn't be
-                    # possible to actually hit this line of code.
-                    # Keeping it just incase either of those
-                    # functions change.
-                    # Just an FYI for anyone running coverage.
-                    raise AlchemyUpdateException(
-                        "Can't create a new " + whitelist_name +
-                        ", the parent of " + key_stack[-1] +
-                        " is not a relationship.")
-                # appending a new object to a list relationship
-                RecordClass = inspect(class_attrs[-2]).mapper.class_
-                sub_instance = RecordClass()
-                if class_attrs[-2].property.uselist:
-                    _append_to_list_relation(
-                        sub_instance, parent, item[key],
+                    _append_error(
+                        error_dict,
                         get_full_attr_name(key_stack, key),
-                        whitelist_name, whitelist)
+                        _("You may not create a new instance of this object."))
+                elif not isinstance(item[key], dict):    # pragma no cover
+                    # failsafe - Should be caught one iteration
+                    # before this, near the end of the function.
+                    _append_error(
+                        error_dict,
+                        get_full_attr_name(key_stack, key),
+                        _("Attempted to set an object to a raw value."))
                 else:
-                    _set_non_list_relationship_obj(
-                        sub_instance,
-                        attr_stack[-2],
-                        key_stack[-1],
-                        item[key],
-                        get_full_attr_name(key_stack, key),
-                        whitelist_name,
-                        whitelist)
-                if add_to_session:
-                    db_session.add(sub_instance)
-                key_stack.append(key)
-                attr_stack.append(sub_instance)
-                update_stack.append("POP")
-                if isinstance(item[key], dict):
-                    update_stack.append(item[key])
-                else:    # pragma no cover
-                    # failsafe - Should be caught one iteration before
-                    # this, near the end of the function.
-                    raise AlchemyUpdateException(
-                        "Attempted to set an object to a raw value.")
+                    if not (len(class_attrs) >= 2 and
+                            hasattr(class_attrs[-2],
+                                    "property")):    # pragma no cover
+                        # failsafe
+                        # An invalid $new gets caught in a few places
+                        # before here (get_class_attributes and
+                        # convert_to_alchemy_type), so it shouldn't be
+                        # possible to actually hit this line of code.
+                        # Keeping it just incase either of those
+                        # functions change.
+                        # Just an FYI for anyone running coverage.
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("Invalid parent for this newly created object."))
+                    else:
+                        # appending a new object to a list relationship
+                        RecordClass = inspect(class_attrs[-2]).mapper.class_
+                        sub_instance = RecordClass()
+                        if class_attrs[-2].property.uselist:
+                            success = _append_to_list_relation(
+                                sub_instance,
+                                parent,
+                                item[key],
+                                get_full_attr_name(key_stack, key),
+                                whitelist_name,
+                                whitelist,
+                                error_dict,
+                                validation_mode,
+                                _)
+                        else:
+                            success = _set_non_list_relationship_obj(
+                                sub_instance,
+                                attr_stack[-2],
+                                key_stack[-1],
+                                item[key],
+                                get_full_attr_name(key_stack, key),
+                                whitelist_name,
+                                whitelist,
+                                error_dict,
+                                validation_mode,
+                                _)
+                        if add_to_session and not validation_mode and success:
+                            db_session.add(sub_instance)
+                        # Even if this operation fails, we push the
+                        # new object to the stack for the sake of
+                        # continuing forward and checking errors.
+                        key_stack.append(key)
+                        attr_stack.append(sub_instance)
+                        update_stack.append("POP")
+                        update_stack.append(item[key])
             elif key.startswith("$id") or key.startswith("~id"):
                 if not (len(class_attrs) >= 2 and
+                        len(attr_stack) >= 2 and
                         hasattr(
                             class_attrs[-2],
                             "property")):    # pragma no cover
                     # failsafe - Like $new, we should never raise this,
                     # exception since the problem gets caught in two other
                     # functions. Just an FYI for coverage purposes.
-                    raise AlchemyUpdateException(
-                        "Invalid $id reference: " +
-                        get_full_attr_name(key_stack, key))
-                if not len(attr_stack) >= 2:    # pragma no cover
-                    # failsafe - don't ever hit this line either...
-                    raise AlchemyUpdateException(
-                        "An $id reference must have a parent object: " +
-                        get_full_attr_name(key_stack, key))
-                RecordClass = inspect(class_attrs[-2]).mapper.class_
-                primary_key_names = get_alchemy_primary_keys(RecordClass)
-                primary_key_data = get_primary_key_dict(key)
-                # Note that attr_stack[-1] is the relationship list
-                # So attr_stack[-2] is the actual parent object
-                query = db_session.query(
-                    RecordClass).with_parent(attr_stack[-2])
-                query = _filter_by_primary_key(
-                    query, RecordClass, primary_key_names, primary_key_data,
-                    get_full_attr_name(key_stack, key))
-                if db_session.query(
-                        literal(True)).filter(query.exists()).scalar():
-                    # this obj is already in the relationship
-                    relation_obj = query.first()
-                    if relation_obj is None:    # pragma no cover
-                        # Test coverage: won't hit this - timing issue.
-                        raise AlchemyUpdateException(
-                            "While handling the query, " +
-                            get_full_attr_name(key_stack, key) +
-                            " was removed from the database.")
+                    _append_error(
+                        error_dict,
+                        get_full_attr_name(key_stack, key),
+                        _("Invalid $id reference."))
                 else:
-                    # this obj is not in the relationship
-                    # run actual query to get object
-                    query = db_session.query(RecordClass)
+                    RecordClass = inspect(class_attrs[-2]).mapper.class_
+                    primary_key_names = get_alchemy_primary_keys(RecordClass)
+                    primary_key_data = get_primary_key_dict(key)
+                    success = False
+                    # Note that attr_stack[-1] is the relationship list
+                    # So attr_stack[-2] is the actual parent object
+                    query = db_session.query(
+                        RecordClass).with_parent(attr_stack[-2])
                     query = _filter_by_primary_key(
-                        query, RecordClass, primary_key_names, primary_key_data,
-                        get_full_attr_name(key_stack, key))
-                    relation_obj = query.first()
-                    if relation_obj is None:    # pragma no cover
-                        # coverage - won't ever hit this due to timing.
-                        raise AlchemyUpdateException(
-                            "While handling the query, " +
-                            get_full_attr_name(key_stack, key) +
-                            " was removed from the database.")
-                    whitelist_name = _get_whitelist_name(key_stack)
-                    # Add relationship obj to list
-                    if class_attrs[-2].property.uselist:
-                        _append_to_list_relation(
-                            relation_obj, parent, item[key],
-                            get_full_attr_name(key_stack, key),
-                            whitelist_name, whitelist)
+                        query, RecordClass, primary_key_names,
+                        primary_key_data, get_full_attr_name(key_stack, key),
+                        error_dict, _)
+                    if query is None:
+                        # filter by primary key failed
+                        relation_obj = None
+                    elif db_session.query(
+                            literal(True)).filter(query.exists()).scalar():
+                        # this obj is already in the relationship
+                        relation_obj = query.first()
+                        if relation_obj is None:    # pragma no cover
+                            # Test coverage: won't hit this - timing issue.
+                            _append_error(
+                                error_dict,
+                                get_full_attr_name(key_stack, key),
+                                _("A database race condition caused an " +
+                                  "unexpected error. Please try again."))
+                        else:
+                            success = True
                     else:
-                        # want grandparent for non uselist.
-                        # Given album.artist.$id:artist_id=1,
-                        # attr_stack[-2] is album.
-                        _set_non_list_relationship_obj(
-                            relation_obj,
-                            attr_stack[-2],
-                            key_stack[-1],
-                            item[key],
+                        # this obj is not in the relationship
+                        # run actual query to get object
+                        query = db_session.query(RecordClass)
+                        query = _filter_by_primary_key(
+                            query,
+                            RecordClass,
+                            primary_key_names,
+                            primary_key_data,
                             get_full_attr_name(key_stack, key),
-                            whitelist_name,
-                            whitelist)
-                # if no exception has been raised yet,
-                # relation_obj must have a value.
-                if not isinstance(item[key], dict):
-                    raise AlchemyUpdateException(
-                        "Attempted to set an object to a raw value.")
-                key_stack.append(key)
-                attr_stack.append(relation_obj)
-                update_stack.append("POP")
-                update_stack.append(item[key])
+                            error_dict,
+                            _)
+                        if query is None:    # pragma no cover
+                            # The prior _filter_by_primary_key will
+                            # error out first, making it not possible
+                            # to have the above _filter_by_primary_key
+                            # fail to build a valid query.
+                            # This was left here purely as a fail safe.
+                            relation_obj = None
+                        else:
+                            relation_obj = query.first()
+                            if relation_obj is None:    # pragma no cover
+                                # coverage won't hit this due to timing.
+                                _append_error(
+                                    error_dict,
+                                    get_full_attr_name(key_stack, key),
+                                    _("A database race condition caused an " +
+                                      "unexpected error. Please try again."))
+                            else:
+                                whitelist_name = _get_whitelist_name(key_stack)
+                                # Add relationship obj to list
+                                if class_attrs[-2].property.uselist:
+                                    success = _append_to_list_relation(
+                                        relation_obj,
+                                        parent,
+                                        item[key],
+                                        get_full_attr_name(key_stack, key),
+                                        whitelist_name,
+                                        whitelist,
+                                        error_dict,
+                                        validation_mode,
+                                        _)
+                                else:
+                                    # want grandparent for non uselist.
+                                    # Given album.artist.$id:artist_id=1,
+                                    # attr_stack[-2] is album.
+                                    success = _set_non_list_relationship_obj(
+                                        relation_obj,
+                                        attr_stack[-2],
+                                        key_stack[-1],
+                                        item[key],
+                                        get_full_attr_name(key_stack, key),
+                                        whitelist_name,
+                                        whitelist,
+                                        error_dict,
+                                        validation_mode,
+                                        _)
+                    if not isinstance(item[key], dict):
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("Attempted to set an object to a raw value."))
+                    else:
+                        if not success:
+                            # Use dummy object for further validation
+                            relation_obj = RecordClass()
+                        key_stack.append(key)
+                        attr_stack.append(relation_obj)
+                        update_stack.append("POP")
+                        update_stack.append(item[key])
             else:
+                # TODO - whitelist check
                 if parent is None:
                     # failsafe - probably didn't use an $id identifier.
-                    raise AlchemyUpdateException(
-                        get_full_attr_name(key_stack) +
-                        " is not a valid parent obj for " + key + ". " +
-                        "You may have forgotten to use an $id identifier.")
+                    _append_error(
+                        error_dict,
+                        get_full_attr_name(key_stack, key),
+                        _("Attribute doesn't have a valid parent object."))
                 elif (hasattr(class_attrs[-1], "property") and
                       type(class_attrs[-1].property) == ColumnProperty):
-                    target_type = class_attrs[-1].property.columns[0].type
-                    value = convert_to_alchemy_type(
-                        item[key], type(target_type))
-                    setattr(parent, key, value)
+                    # temp operation for whitelist checking,
+                    # will be undone below.
+                    key_stack.append(key)
+                    whitelist_name = _get_whitelist_name(key_stack)
+                    if _is_whitelisted(whitelist_name, whitelist):
+                        key_stack.pop()
+                        target_type = class_attrs[-1].property.columns[0].type
+                        error = False
+                        try:
+                            value = convert_to_alchemy_type(item[key],
+                                                            type(target_type))
+                        except TypeError:
+                            _append_error(
+                                error_dict,
+                                get_full_attr_name(key_stack, key),
+                                _("Unable to convert value to the proper " +
+                                  "type."))
+                            error = True
+                            value = None
+                        if not validation_mode and not error:
+                            setattr(parent, key, value)
+                    else:
+                        key_stack.pop()
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("You do not have permission to modify " +
+                              "this attribute."))
                 else:
                     # this is some obj property
                     if (hasattr(class_attrs[-1], "property") and not
@@ -855,17 +990,22 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                         attr = None
                     else:
                         attr = getattr(parent, key)
-                    attr_stack.append(attr)
-                    key_stack.append(key)
-                    update_stack.append("POP")
                     if isinstance(item[key], dict):
+                        attr_stack.append(attr)
+                        key_stack.append(key)
+                        update_stack.append("POP")
                         update_stack.append(item[key])
                     else:
-                        raise AlchemyUpdateException(
-                            "Attempted to set an object to a raw value.")
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("Attempted to set an object to a raw value."))
         else:
             for key in sorted(item.keys()):
                 # we sort to ensure that actions like $add or $remove
                 # occur first.
                 update_stack.append({key: item[key]})
-    return instance
+    if error_dict:
+        raise AlchemyUpdateException(error_dict)
+    else:
+        return instance

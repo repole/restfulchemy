@@ -3,7 +3,7 @@
     restfulchemy.__init__
     ~~~~~~~~~~~~~~~~~~~~~
 
-    An implementation of the publish-subscribe pattern for snakeMQ.
+    Utility functions for building a RESTful API around SQLAlchemy.
 
     :copyright: (c) 2015 by Nicholas Repole and contributors.
                 See AUTHORS for more details.

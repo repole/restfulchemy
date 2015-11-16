@@ -11,6 +11,7 @@
 """
 from __future__ import unicode_literals
 from restfulchemy._compat import str
+import inflection
 from mqlalchemy import convert_to_alchemy_type, apply_mql_filters, \
     InvalidMQLException
 from sqlalchemy import literal
@@ -18,11 +19,10 @@ from sqlalchemy.orm import ColumnProperty, RelationshipProperty, \
     class_mapper
 from sqlalchemy.types import BOOLEAN
 from sqlalchemy.inspection import inspect
+
 import json
 
 __version__ = "0.3.0dev"
-
-_ = str
 
 
 class AlchemyUpdateException(Exception):
@@ -58,15 +58,11 @@ def get_class_attributes(RecordClass, attr_name):
         for attr_name in split_attr_name:
             if (hasattr(root_type, "property") and
                     type(root_type.property) == RelationshipProperty):
-                if (attr_name.startswith("$id") or
-                        attr_name.startswith("~id") or
-                        attr_name.startswith("$new") or
-                        attr_name.startswith("~new")):
+                if _is_id_key(attr_name) or _is_new_key(attr_name):
                     class_attrs.append(inspect(root_type).mapper.class_)
                     continue
-                elif (attr_name == "~add" or attr_name == "$add" or
-                      attr_name == "~remove" or attr_name == "$remove" or
-                      attr_name == "~set" or attr_name == "$set"):
+                elif (_is_add_key(attr_name) or _is_remove_key(attr_name) or
+                      _is_set_key(attr_name)):
                     class_attrs.append(None)
                     continue
                 else:
@@ -78,8 +74,10 @@ def get_class_attributes(RecordClass, attr_name):
     return class_attrs
 
 
-def parse_filters(RecordClass, query_params, only_parse_complex=False):
+def parse_filters(RecordClass, query_params, complex_query_name="query",
+                  only_parse_complex=False, gettext=str):
     """Convert request params into MQLAlchemy friendly search."""
+    _ = gettext
     if not isinstance(query_params, dict):
         # invalid filters provided, treat as if none were supplied.
         return {}
@@ -87,7 +85,7 @@ def parse_filters(RecordClass, query_params, only_parse_complex=False):
     # attribute.
     result = {"$and": []}
     for key in query_params.keys():
-        if key == "$query" or key == "~query":
+        if key == complex_query_name:
             complex_query_list = []
             if isinstance(query_params[key], list):
                 complex_query_list = query_params[key]
@@ -101,33 +99,34 @@ def parse_filters(RecordClass, query_params, only_parse_complex=False):
                     result["$and"].append(query)
                 except (TypeError, ValueError):
                     raise InvalidMQLException(
-                        key + " must be set to a valid json dumped dict.")
+                        _("The complex filters query value must be set to a " +
+                          "valid json dict."))
         elif not only_parse_complex:
             # how much to remove from end of key to get the attr_name.
             # default values:
             chop_len = 0
             attr_name = key
             comparator = "$eq"
-            if key.endswith("_$gt") or key.endswith("_~gt"):
-                chop_len = 4
+            if key.endswith("-gt"):
+                chop_len = 3
                 comparator = "$gt"
-            elif key.endswith("_$gte") or key.endswith("_~gte"):
-                chop_len = 5
+            elif key.endswith("-gte"):
+                chop_len = 4
                 comparator = "$gte"
-            elif key.endswith("_$eq") or key.endswith("_~eq"):
-                chop_len = 4
+            elif key.endswith("-eq"):
+                chop_len = 3
                 comparator = "$eq"
-            elif key.endswith("_$lte") or key.endswith("_~lte"):
-                chop_len = 5
+            elif key.endswith("-lte"):
+                chop_len = 4
                 comparator = "$lte"
-            elif key.endswith("_$lt") or key.endswith("_~lt"):
-                chop_len = 4
+            elif key.endswith("-lt"):
+                chop_len = 3
                 comparator = "$lt"
-            elif key.endswith("_$ne") or key.endswith("_~ne"):
-                chop_len = 4
+            elif key.endswith("-ne"):
+                chop_len = 3
                 comparator = "$ne"
-            elif key.endswith("_$like") or key.endswith("_~like"):
-                chop_len = 6
+            elif key.endswith("-like"):
+                chop_len = 5
                 comparator = "$like"
             if chop_len != 0:
                 attr_name = key[:(-1 * chop_len)]
@@ -146,27 +145,30 @@ def parse_filters(RecordClass, query_params, only_parse_complex=False):
     return result
 
 
-def apply_order_by(query, RecordClass, query_params):
-    """Given query_params that contain an order_by key, apply sorts.
+def apply_order_by(query, RecordClass, query_params,
+                   order_by_query_name="order_by",
+                   convert_key_names=False):
+    """Given query_params that contain an orderBy key, apply sorts.
 
-    Format for order_by is `attr_name~ASC-other_attr~DESC`, where
-    hyphens separate order_by statements, and tildes are used to
+    Format for order_by is `attr_name-ASC other_attr-DESC`, where
+    spaces separate order_by statements, and hyphens are used to
     denote direction.
 
     """
     if query_params is None:
         query_params = {}
-    order_by_params = query_params.get("~order_by")
+    order_by_params = query_params.get(order_by_query_name)
     if order_by_params:
-        split_order_by_list = order_by_params.split("-")
+        split_order_by_list = order_by_params.split(" ")
         for order_by in split_order_by_list:
-            split_order_by = order_by.split("~")
+            split_order_by = order_by.split("-")
             if len(split_order_by) > 0 and split_order_by[0]:
                 direction = "ASC"
                 if (len(split_order_by) > 1 and
                         split_order_by[1].lower().startswith("d")):
                     direction = "DESC"
-                attr_name = split_order_by[0]
+                attr_name = _convert_key_name(split_order_by[0],
+                                              convert_key_names)
                 if hasattr(RecordClass, attr_name):
                     if direction == "ASC":
                         query = query.order_by(
@@ -177,12 +179,14 @@ def apply_order_by(query, RecordClass, query_params):
     return query
 
 
-def apply_offset_and_limit(query, query_params, page=None, page_max_size=None):
+def apply_offset_and_limit(query, query_params, page=None, page_max_size=None,
+                           limit_query_name="limit", offset_query_name="offset",
+                           gettext=str):
     """Applies offset and limit to the query if appropriate.
 
     :param query: Any desired filters must already have been applied.
-    :param query_params: A dictionary in which "$limit", "~limit",
-                         "$offset", or "~offset" may be supplied.
+    :param query_params: A dictionary in which a limit or offset may
+                         be specified.
     :param page: If provided, is used along with the page_max_size to
                  determine the offset that should be applied to the
                  query. If a page number other than 1 is provided, a
@@ -194,29 +198,44 @@ def apply_offset_and_limit(query, query_params, page=None, page_max_size=None):
                           max number of records to allow. If a
                           query_param limit of a higher number is
                           provided, it will be ignored.
+    :param offset_query_name: The name of the key used to check for
+                              an offset value in the provided
+                              query_params. May not want to use the
+                              default "offset" value if the object
+                              being queried has an attribute named
+                              "offset".
+    :param limit_query_name: The name of the key used to check for
+                             a limit value in the provided
+                             query_params. May not want to use the
+                             default "limit" value if the object
+                             being queried has an attribute named
+                             "limit".
+    :param gettext: Optional function to be used for any potential
+                    error translation.
 
     """
+    _ = gettext
     if query_params is None:
         query_params = {}
     if page is not None:
         if page > 1 and page_max_size is None:
             raise ValueError(
-                "A page greater than 1 is provided without a page_max_size.")
+                _("Page greater than 1 provided without a page max size."))
         if page < 1:
-            raise ValueError("Page number can not be less than 1.")
+            raise ValueError(_("Page number can not be less than 1."))
     # defaults
     offset = 0
     limit = page_max_size
-    for param_key in ["$offset", "~offset"]:
-        if query_params.get(param_key):
+    if offset_query_name is not None:
+        if query_params.get(offset_query_name):
             try:
-                offset = int(query_params.get(param_key))
+                offset = int(query_params.get(offset_query_name))
             except ValueError:
                 pass
-    for param_key in ["$limit", "~limit"]:
-        if query_params.get(param_key):
+    if limit_query_name is not None:
+        if query_params.get(limit_query_name):
             try:
-                limit = int(query_params.get(param_key))
+                limit = int(query_params.get(limit_query_name))
             except ValueError:
                 pass
     if page_max_size and limit > page_max_size:
@@ -235,15 +254,15 @@ def _get_whitelist_name(name_stack):
     """Returns a joined name_stack, but removes $new and $id."""
     names = []
     for attr in name_stack:
-        if attr.startswith(("$new", "~new", "_new_")):
+        if _is_new_key(attr):
             attr = "$new"
-        elif attr.startswith(("$id", "~id", "_id_")):
+        elif _is_id_key(attr):
             attr = "$id"
         names.append(attr)
     return ".".join([str(name) for name in names])
 
 
-def _cleanse_update_params(instance, query_params):
+def _cleanse_update_params(instance, query_params, convert_key_names=False):
     """Get a cleaned set of query params with only valid update keys.
 
     If you want to use func:`update_object` with some query params
@@ -265,7 +284,10 @@ def _cleanse_update_params(instance, query_params):
         # appropriately in the query string prior to using this
         # function.
         split_name = key.split('.')
-        if split_name and hasattr(instance, split_name[0]):
+        key_name = split_name[0]
+        if convert_key_names == "underscore":
+            key_name = inflection.underscore(key_name)
+        if split_name and hasattr(instance, key_name):
             result[key] = query_params[key]
     return result
 
@@ -295,8 +317,10 @@ def _split_dict_params(update_params):
 
 
 def _filter_by_primary_key(query, RecordClass, primary_key_names,
-                           primary_key_data, full_attr_name, error_dict, _):
+                           primary_key_data, full_attr_name, error_dict,
+                           gettext):
     """Generate a query that filters on primary key value(s)."""
+    _ = gettext
     for primary_key_name in primary_key_names:
         if primary_key_name in primary_key_data:
             primary_key_attr = getattr(RecordClass, primary_key_name)
@@ -308,14 +332,14 @@ def _filter_by_primary_key(query, RecordClass, primary_key_names,
                 _append_error(
                     error_dict,
                     full_attr_name,
-                    _("Invalid $id primary key value."))
+                    _("Invalid id primary key value."))
                 return None
             query = query.filter(primary_key_attr == primary_key_value)
         else:
             _append_error(
                 error_dict,
                 full_attr_name,
-                _("Invalid $id primary key field."))
+                _("Invalid id primary key field."))
             return None
     return query
 
@@ -333,17 +357,31 @@ def get_alchemy_primary_keys(RecordClass):
 
 
 def get_primary_key_dict(id_string):
-    """Turns "$id:some_field=6" into {"some_field": 6}."""
+    """Turns "id-some_field-6" into {"some_field": 6}."""
     # TODO - Handle escape chars.
-    # TODO - Better error handling.
-    split_string = id_string.split(":")
-    # remove the $id portion of the string
-    split_string.pop(0)
-    result = {}
-    for key_value in split_string:
-        split_key_value = key_value.split("=")
-        result[split_key_value[0]] = split_key_value[1]
-    return result
+    if id_string.startswith("id-"):
+        id_string = id_string[3:]
+        split_string = id_string.split("-")
+        if len(split_string) % 2 == 1 or len(split_string) == 0:
+            # odd number of fields mean each key doesn't have an
+            # associated value.
+            raise AttributeError("Invalid primary key id field.")
+        key_names = split_string[0::2]
+        key_values = split_string[1::2]
+        result = {}
+        for i, key_name in enumerate(key_names):
+            result[key_name] = key_values[i]
+        return result
+    elif id_string.startswith("$id:"):
+        id_string = id_string[4:]
+        split_string = id_string.split(":")
+        result = {}
+        for key_value in split_string:
+            split_key_value = key_value.split("=")
+            if len(split_key_value) != 2:
+                raise AttributeError("Invalid primary key id field.")
+            result[split_key_value[0]] = split_key_value[1]
+        return result
 
 
 def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
@@ -355,13 +393,14 @@ def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
         if not (isinstance(update_stack_item, dict) and (
                 update_stack_item.get("$set") in (
                     True, "True", "true", 1, "1") or
-                update_stack_item.get("~set") in (
+                update_stack_item.get("_set_") in (
                     True, "True", "true", 1, "1"))):
             _append_error(
                 error_dict,
                 full_attr_name,
-                _("Referenced a sub item $id that does not exist." +
-                  "Did you forget to include $set for this sub item?"))
+                _("Referenced a sub item id that does not exist." +
+                  "Did you forget to include a set command for this " +
+                  "sub item?"))
             return False
         if not (_is_whitelisted(whitelist_name, whitelist, "set") or
                 (_is_whitelisted(whitelist_name, whitelist, "remove") and
@@ -380,17 +419,18 @@ def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
         if not (isinstance(update_stack_item, dict) and (
                 update_stack_item.get("$set") in (
                     True, "True", "true", 1, "1") or
-                update_stack_item.get("~set") in (
+                update_stack_item.get("_set_") in (
                     True, "True", "true", 1, "1") or
                 update_stack_item.get("$add") in (
                     True, "True", "true", 1, "1") or
-                update_stack_item.get("~add") in (
+                update_stack_item.get("_add_") in (
                     True, "True", "true", 1, "1"))):
             _append_error(
                 error_dict,
                 full_attr_name,
-                _("Referenced a sub item $id that does not exist. " +
-                  "Did you forget to include $set or $add for this sub item?"))
+                _("Referenced a sub item id that does not exist. " +
+                  "Did you forget to include a set or add command " +
+                  "for this sub item?"))
             return False
         if not (_is_whitelisted(whitelist_name, whitelist, "add") or
                 _is_whitelisted(whitelist_name, whitelist, "set")):
@@ -406,7 +446,9 @@ def _set_non_list_relationship_obj(relation_obj, parent, relationship_name,
 
 
 def create_resource(db_session, RecordClass, params, whitelist=None,
-                    add_to_session=True, stack_size_limit=None):
+                    add_to_session=True, stack_size_limit=None,
+                    validation_mode=False, convert_key_names=False,
+                    gettext=str):
     """Create a new instance of a SQLAlchemy object.
 
     See :func:`update_object` for parameter details.
@@ -418,10 +460,13 @@ def create_resource(db_session, RecordClass, params, whitelist=None,
     _set_record_attrs(
         db_session,
         instance,
-        _cleanse_update_params(instance, params),
+        _cleanse_update_params(instance, params, convert_key_names),
         whitelist,
-        add_to_session,
-        stack_size_limit
+        add_to_session=add_to_session,
+        validation_mode=validation_mode,
+        stack_size_limit=stack_size_limit,
+        convert_key_names=convert_key_names,
+        gettext=gettext
     )
     if add_to_session:
         db_session.add(instance)
@@ -429,7 +474,8 @@ def create_resource(db_session, RecordClass, params, whitelist=None,
 
 
 def get_resources_query(db_session, RecordClass, query_params, whitelist=None,
-                        stack_size_limit=None):
+                        stack_size_limit=None, convert_key_names=False,
+                        gettext=str):
     """Get a query object with filters from query_params applied.
 
     :param db_session: A SQLAlchemy database session or query session.
@@ -442,7 +488,7 @@ def get_resources_query(db_session, RecordClass, query_params, whitelist=None,
                          part of an $and statement. So
                          example.com?name=Nick&age=25 would query
                          for a person who's name is Nick and is 25.
-                         You can also have a more complex $query
+                         You can also have a more complex query
                          argument that contains a json dumped string
                          or dictionary of potentially more complex
                          query parameters. These parameters follow
@@ -465,12 +511,17 @@ def get_resources_query(db_session, RecordClass, query_params, whitelist=None,
         RecordClass,
         filters,
         whitelist,
-        stack_size_limit)
+        stack_size_limit,
+        convert_key_names=convert_key_names,
+        gettext=gettext)
     return query
 
 
 def get_resources(db_session, RecordClass, query_params, whitelist=None,
-                  page=None, page_max_size=None, stack_size_limit=None):
+                  stack_size_limit=None, page=None, page_max_size=None,
+                  order_by_query_name="order_by", limit_query_name="limit",
+                  offset_query_name="offset", convert_key_names=False,
+                  gettext=str):
     """Get a list of SQLAlchemy objects.
 
     See :func:`get_resources_query` and :func:`apply_order_by` for
@@ -482,15 +533,30 @@ def get_resources(db_session, RecordClass, query_params, whitelist=None,
         RecordClass,
         query_params,
         whitelist,
-        stack_size_limit
-    )
-    query = apply_order_by(query, RecordClass, query_params)
-    query = apply_offset_and_limit(query, query_params, page, page_max_size)
+        stack_size_limit,
+        convert_key_names=convert_key_names,
+        gettext=gettext)
+    query = apply_order_by(
+        query,
+        RecordClass,
+        query_params,
+        order_by_query_name=order_by_query_name,
+        convert_key_names=convert_key_names)
+    query = apply_offset_and_limit(
+        query,
+        query_params,
+        page=page,
+        page_max_size=page_max_size,
+        limit_query_name=limit_query_name,
+        offset_query_name=offset_query_name,
+        gettext=gettext)
     return query.all()
 
 
 def get_resource(db_session, RecordClass, query_params, whitelist=None,
-                 stack_size_limit=None):
+                 stack_size_limit=None, order_by_query_name="order_by",
+                 offset_query_name="offset", convert_key_names=False,
+                 gettext=str):
     """Get a single instance of a SQLAlchemy object.
 
     See :func:`get_resources_query` and :func:`apply_order_by` for
@@ -504,24 +570,38 @@ def get_resource(db_session, RecordClass, query_params, whitelist=None,
         RecordClass,
         query_params,
         whitelist,
-        stack_size_limit
+        stack_size_limit,
+        convert_key_names=convert_key_names,
+        gettext=gettext
     )
-    query = apply_order_by(query, RecordClass, query_params)
-    query = apply_offset_and_limit(query, query_params, None, 1)
+    query = apply_order_by(
+        query,
+        RecordClass,
+        query_params,
+        order_by_query_name=order_by_query_name,
+        convert_key_names=convert_key_names)
+    query = apply_offset_and_limit(
+        query,
+        query_params,
+        offset_query_name=offset_query_name,
+        limit_query_name=None,
+        gettext=gettext)
     return query.first()
 
 
 def update_resource(db_session, instance, params, whitelist=None,
-                    add_to_session=True, stack_size_limit=None):
+                    add_to_session=True, stack_size_limit=None,
+                    validation_mode=False, convert_key_names=False,
+                    gettext=str):
     """Update a SQLAlchemy model instance based on query params.
 
     To update a relationship item, regardless of if the relationship
-    uses a list or not, you must use $id notation::
+    uses a list or not, you must use a form of id notation::
 
         update_resource(
             db_session,
             album,
-            {"artist.$id:artist_id=1.name": "Nas"}
+            {"artist.id_-artist_id-1.name": "Nas"}
             whitelist=["artist.name"])
 
     This would update the provided album's artist name to "Nas".
@@ -532,7 +612,7 @@ def update_resource(db_session, instance, params, whitelist=None,
         update_resource(
             db_session,
             album,
-            {"artist.$id:artist_id=5.$add": True}
+            {"artist.id_-artist_id-5._set_": True}
             whitelist=["artist.$add", "artist.$remove"])
 
     The `"artist.$add"` allows setting the album.artist relationship
@@ -544,7 +624,7 @@ def update_resource(db_session, instance, params, whitelist=None,
     $remove for a non list using relationship.
 
     Relationships that use lists work slightly differently, as
-    including an $id that isn't already in the list will simply result
+    including an id that isn't already in the list will simply result
     in adding that object, but won't result in any others being removed.
 
     To explicitly remove an object from a relation::
@@ -552,21 +632,21 @@ def update_resource(db_session, instance, params, whitelist=None,
         update_resource(
             db_session,
             album,
-            {"artist.$id:artist_id=1.$remove": True}
+            {"artist.id-artist_id-5._remove_": True}
             whitelist=["artist.$remove"])
 
     In this case, since the `artist` relationship does not use a list,
     `album.artist` would simply be set to `None`. If the relationship
-    was a list, the artist with a matching $id would simply be removed
+    was a list, the artist with a matching id would simply be removed
     from the relationship list.
 
 
     :param params: A dictionary of dot notation attribute names
                    that are to be updated.
-                   friends.$new0.user_id would denote creating
+                   friends._new_0.user_id would denote creating
                    a new friend in the friends relationship
                    and assigning the user_id attribute. Any
-                   other params that start with friend.$new0
+                   other params that start with friend._new_0
                    would denote an attribute assignment on that
                    same new object.
     :param whitelist: A whitelist of attributes that are allowed to be
@@ -577,7 +657,7 @@ def update_resource(db_session, instance, params, whitelist=None,
 
                       * tracks.$create
                           Allows the creation of a new track (using
-                          the above mentioned $new notation). Whitelist
+                          the above mentioned 'new' notation). Whitelist
                           must also include $add or (for non list using
                           relationships) $set to allow this item to
                           actually be added to the relationship.
@@ -585,14 +665,14 @@ def update_resource(db_session, instance, params, whitelist=None,
                           Enables appending to the relationship a
                           pre-existing track. So if your
                           update_params includes a field
-                          "tracks.$id:track_id=5.$add" set equal to a
+                          "tracks.id-track_id-5._add_" set equal to a
                           True expression, and a track with id equal
                           to 5 already exists, that track will be
                           added to album.tracks.
                       * tracks.$remove
                           Enables removing an object from a
                           relationship.
-                          "tracks.$id:track_id=5.$remove" set equal
+                          "tracks.id-track_id-5._remove_" set equal
                           to a True expression will result in
                           removing the track with id equal to 5
                           from this relationship.
@@ -610,10 +690,13 @@ def update_resource(db_session, instance, params, whitelist=None,
     _set_record_attrs(
         db_session,
         instance,
-        _cleanse_update_params(instance, params),
+        _cleanse_update_params(instance, params, convert_key_names),
         whitelist,
-        add_to_session,
-        stack_size_limit)
+        add_to_session=add_to_session,
+        stack_size_limit=stack_size_limit,
+        validation_mode=validation_mode,
+        convert_key_names=convert_key_names,
+        gettext=gettext)
 
 
 def _is_whitelisted(whitelist_name, whitelist, verb=None):
@@ -632,9 +715,14 @@ def _is_whitelisted(whitelist_name, whitelist, verb=None):
             return True
         if verb is not None:
             money_notation = ".$" + str(verb)
+            underscore_notation = "._" + str(verb) + "_"
             if whitelist_name + money_notation in whitelist:
                 return True
             elif short_whitelist_name + money_notation in whitelist:
+                return True
+            elif whitelist_name + underscore_notation in whitelist:
+                return True
+            elif short_whitelist_name + underscore_notation in whitelist:
                 return True
     return False
 
@@ -646,7 +734,7 @@ def _append_to_list_relation(relation_obj, parent, update_stack_item,
     if not (isinstance(update_stack_item, dict) and (
             update_stack_item.get("$add") in (
                 True, "True", "true", 1, "1") or
-            update_stack_item.get("~add") in (
+            update_stack_item.get("_add_") in (
                 True, "True", "true", 1, "1"))):
         _append_error(
             error_dict,
@@ -673,15 +761,84 @@ def _append_error(error_dict, field_name, message):
     error_dict[field_name].append(message)
 
 
+def _is_add_key(key):
+    """Return True if this key denotes a subresource add key."""
+    if key in {"$add", "_add_"}:
+        return True
+    return False
+
+
+def _is_remove_key(key):
+    """Return True if this key denotes a subresource remove key."""
+    if key in {"$remove", "_remove_"}:
+        return True
+    return False
+
+
+def _is_set_key(key):
+    """Return True if this key denotes a subresource remove key."""
+    if key in {"$set", "_set_"}:
+        return True
+    return False
+
+
+def _is_new_key(key):
+    """Return True if this key denotes a subresource new key."""
+    if key.startswith("$new") or key.startswith("_new_"):
+        return True
+    return False
+
+
+def _is_id_key(key):
+    """Return True if this key denotes a subresource ID key."""
+    if key.startswith("id-") or key.startswith("$id:"):
+        return True
+    return False
+
+
+def _convert_key_name(key, mode):
+    """Convert a supplied key to a different format.
+
+    :param key: Some attribute name or id key.
+    :param mode: Either 'underscore', 'camelCase', or for no operation
+                 `None`.
+
+    """
+    if not mode:
+        return key
+    elif mode == "underscore":
+        if _is_id_key(key):
+            id_dict = get_primary_key_dict(key)
+            new_id_key = "id"
+            for attr_name in id_dict:
+                new_id_key += "-{key}-{value}".format(
+                    key=inflection.underscore(attr_name),
+                    value=id_dict[attr_name])
+            return new_id_key
+        return inflection.underscore(key)
+
+
 def _set_record_attrs(db_session, instance, params, whitelist=None,
                       add_to_session=True, stack_size_limit=None,
-                      validation_mode=False):
+                      validation_mode=False, convert_key_names=False,
+                      gettext=str):
     """Set a SQLAlchemy model instance from a dictionary of params."""
+    _ = gettext
     split_params = _split_dict_params(params)
     # process the newly formatted query params into a series of updates
     update_stack = list()
     update_stack.append(split_params)
+    # key_stack holds the broken up attribute names for a field
+    # as provided by the user.
     key_stack = list()
+    # c_key_stack contains those same names, but converted to the
+    # requested format as specified by convert_key_names.
+    # EX: User provides camelCase names, but your alchemy models
+    # are in underscore format. key_stack would contain the camelCase
+    # attribute names, c_key_stack would contain the underscore names.
+    c_key_stack = list()
+    # attr_stack contains the actual fields for the provided instance,
+    # matched up with each key name in c_key_stack.
     attr_stack = list()
     attr_stack.append(instance)
     error_dict = {}
@@ -692,16 +849,27 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
         if item == "POP":
             attr_stack.pop()
             key_stack.pop()
+            c_key_stack.pop()
         elif len(item.keys()) == 1:
             key = list(item.keys())[0]
             parent = attr_stack[-1]
             # get property types
-            prop_name_stack = list(key_stack)
+            prop_name_stack = list(c_key_stack)
             prop_name_stack.insert(0, type(instance).__name__)
+            try:
+                c_key = _convert_key_name(key, convert_key_names)
+            except AttributeError:
+                _append_error(
+                    error_dict,
+                    get_full_attr_name(key_stack, key),
+                    _("Invalid id attribute."))
+                # any operation on this attribute or its children
+                # will be invalid so continue to next item in stack.
+                continue
             try:
                 class_attrs = get_class_attributes(
                     type(instance),
-                    ".".join([str(prop) for prop in prop_name_stack + [key]]))
+                    ".".join([str(prop) for prop in prop_name_stack + [c_key]]))
             except AttributeError:
                 _append_error(
                     error_dict,
@@ -710,7 +878,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                 # any operation on this attribute or its children
                 # will be invalid so continue to next item in stack.
                 continue
-            if key in ("$add", "~add", "$set", "~set"):
+            if _is_add_key(key) or _is_set_key(key):
                 # Add an object to a relation.
                 # Will have been taken care of by previous $id field.
                 # Saying {"Track.$id:TrackId=1.$add": True}
@@ -718,7 +886,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                 # item to a relation without having to set another
                 # attribute.
                 pass
-            elif key == "$remove" or key == "~remove":
+            elif _is_remove_key(key):
                 try:
                     should_remove = convert_to_alchemy_type(
                         item[key], BOOLEAN)
@@ -727,7 +895,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                     # fail with BOOLEAN, but just incase...
                     should_remove = False
                 if should_remove:
-                    whitelist_name = _get_whitelist_name(key_stack)
+                    whitelist_name = _get_whitelist_name(c_key_stack)
                     if not _is_whitelisted(whitelist_name, whitelist,
                                            "remove"):
                         _append_error(
@@ -743,7 +911,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             # key_stack[-1] should be the key name of the
                             # relationship obj
                             if not validation_mode:
-                                setattr(grandparent, key_stack[-2], None)
+                                setattr(grandparent, c_key_stack[-2], None)
                             # replace the old parent with None now
                             attr_stack.pop()
                             attr_stack.append(None)
@@ -762,8 +930,8 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                                 get_full_attr_name(key_stack, key),
                                 _("Removing this relation is not a valid "
                                   "action."))
-            elif key.startswith("$new") or key.startswith("~new"):
-                whitelist_name = _get_whitelist_name(key_stack)
+            elif _is_new_key(key):
+                whitelist_name = _get_whitelist_name(c_key_stack)
                 if not _is_whitelisted(whitelist_name, whitelist, "create"):
                     _append_error(
                         error_dict,
@@ -811,7 +979,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             success = _set_non_list_relationship_obj(
                                 sub_instance,
                                 attr_stack[-2],
-                                key_stack[-1],
+                                c_key_stack[-1],
                                 item[key],
                                 get_full_attr_name(key_stack, key),
                                 whitelist_name,
@@ -825,26 +993,34 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                         # new object to the stack for the sake of
                         # continuing forward and checking errors.
                         key_stack.append(key)
+                        c_key_stack.append(c_key)
                         attr_stack.append(sub_instance)
                         update_stack.append("POP")
                         update_stack.append(item[key])
-            elif key.startswith("$id") or key.startswith("~id"):
+            elif _is_id_key(key):
                 if not (len(class_attrs) >= 2 and
                         len(attr_stack) >= 2 and
-                        hasattr(
-                            class_attrs[-2],
-                            "property")):    # pragma no cover
+                        hasattr(class_attrs[-2],
+                                "property")):    # pragma no cover
                     # failsafe - Like $new, we should never raise this,
                     # exception since the problem gets caught in two other
                     # functions. Just an FYI for coverage purposes.
                     _append_error(
                         error_dict,
                         get_full_attr_name(key_stack, key),
-                        _("Invalid $id reference."))
+                        _("Invalid id reference."))
                 else:
+                    primary_key_data = {}
+                    try:
+                        primary_key_data = get_primary_key_dict(c_key)
+                    except AttributeError:
+                        _append_error(
+                            error_dict,
+                            get_full_attr_name(key_stack, key),
+                            _("Invalid id reference."))
+                        continue
                     RecordClass = inspect(class_attrs[-2]).mapper.class_
                     primary_key_names = get_alchemy_primary_keys(RecordClass)
-                    primary_key_data = get_primary_key_dict(key)
                     success = False
                     # Note that attr_stack[-1] is the relationship list
                     # So attr_stack[-2] is the actual parent object
@@ -899,7 +1075,8 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                                     _("A database race condition caused an " +
                                       "unexpected error. Please try again."))
                             else:
-                                whitelist_name = _get_whitelist_name(key_stack)
+                                whitelist_name = _get_whitelist_name(
+                                    c_key_stack)
                                 # Add relationship obj to list
                                 if class_attrs[-2].property.uselist:
                                     success = _append_to_list_relation(
@@ -919,7 +1096,7 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                                     success = _set_non_list_relationship_obj(
                                         relation_obj,
                                         attr_stack[-2],
-                                        key_stack[-1],
+                                        c_key_stack[-1],
                                         item[key],
                                         get_full_attr_name(key_stack, key),
                                         whitelist_name,
@@ -937,11 +1114,11 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             # Use dummy object for further validation
                             relation_obj = RecordClass()
                         key_stack.append(key)
+                        c_key_stack.append(c_key)
                         attr_stack.append(relation_obj)
                         update_stack.append("POP")
                         update_stack.append(item[key])
             else:
-                # TODO - whitelist check
                 if parent is None:
                     # failsafe - probably didn't use an $id identifier.
                     _append_error(
@@ -952,10 +1129,10 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                       type(class_attrs[-1].property) == ColumnProperty):
                     # temp operation for whitelist checking,
                     # will be undone below.
-                    key_stack.append(key)
-                    whitelist_name = _get_whitelist_name(key_stack)
+                    c_key_stack.append(c_key)
+                    whitelist_name = _get_whitelist_name(c_key_stack)
                     if _is_whitelisted(whitelist_name, whitelist):
-                        key_stack.pop()
+                        c_key_stack.pop()
                         target_type = class_attrs[-1].property.columns[0].type
                         error = False
                         try:
@@ -970,9 +1147,9 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                             error = True
                             value = None
                         if not validation_mode and not error:
-                            setattr(parent, key, value)
+                            setattr(parent, c_key, value)
                     else:
-                        key_stack.pop()
+                        c_key_stack.pop()
                         _append_error(
                             error_dict,
                             get_full_attr_name(key_stack, key),
@@ -989,9 +1166,10 @@ def _set_record_attrs(db_session, instance, params, whitelist=None,
                         # value without using an $id identifier.
                         attr = None
                     else:
-                        attr = getattr(parent, key)
+                        attr = getattr(parent, c_key)
                     if isinstance(item[key], dict):
                         attr_stack.append(attr)
+                        c_key_stack.append(c_key)
                         key_stack.append(key)
                         update_stack.append("POP")
                         update_stack.append(item[key])

@@ -289,9 +289,34 @@ class RESTfulchemyTests(unittest.TestCase):
         update_resource(
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=1.~add": True}
+            {"tracks.$id:track_id=1.$add": True}
         )
         self.assertTrue(len(playlist.tracks) == 2)
+
+    def test_url_safe_add_item(self):
+        """Make sure the url safe id field works."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        update_resource(
+            self.db_session,
+            playlist,
+            {"tracks.id-track_id-1._add_": True}
+        )
+        self.assertTrue(len(playlist.tracks) == 2)
+
+    def test_convert_names_add_item(self):
+        """Make sure converting from camelCase to underscore works."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        update_resource(
+            self.db_session,
+            playlist,
+            {"tracks.id-trackId-1._add_": True,
+             "playlistId": 99999},
+            convert_key_names="underscore"
+        )
+        self.assertTrue(len(playlist.tracks) == 2 and
+                        playlist.playlist_id == 99999)
 
     def test_bad_id_data_fail(self):
         """Make sure that invalid $id data causes failure."""
@@ -302,7 +327,7 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=abc.~add": True})
+            {"tracks.$id:track_id=abc.$add": True})
 
     def test_bad_id_name_fail(self):
         """Make sure that a bad given $id causes failure."""
@@ -313,7 +338,34 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             playlist,
-            {"tracks.$id:name=abc.~add": True})
+            {"tracks.$id:name=abc.$add": True})
+
+    def test_bad_id_format_fail(self):
+        """Make sure that invalid $id format causes failure."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            {"tracks.$id:track_id.$add": True})
+
+    def test_bad_convert_id_format_fail(self):
+        """Make sure that invalid converted $id format causes failure."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        self.assertRaises(
+            AlchemyUpdateException,
+            update_resource,
+            self.db_session,
+            playlist,
+            {"tracks.id-trackId.$add": True},
+            None,
+            True,
+            None,
+            False,
+            "underscore")
 
     def test_list_relation_add_item_no_add_fail(self):
         """Make sure that adding an item to a list relation fails."""
@@ -324,7 +376,7 @@ class RESTfulchemyTests(unittest.TestCase):
             update_resource,
             self.db_session,
             playlist,
-            {"tracks.$id:track_id=1.~add": False}
+            {"tracks.$id:track_id=1.$add": False}
         )
 
     def test_list_relation_add_item_whitelist(self):
@@ -336,6 +388,18 @@ class RESTfulchemyTests(unittest.TestCase):
             playlist,
             {"tracks.$id:track_id=1.$add": True},
             ["tracks.$add"]
+        )
+        self.assertTrue(len(playlist.tracks) == 2)
+
+    def test_list_relation_add_item_underscore_whitelist(self):
+        """Make sure underscore notation works for whitelists."""
+        playlist = self.db_session.query(models.Playlist).filter(
+            models.Playlist.playlist_id == 18).first()
+        update_resource(
+            self.db_session,
+            playlist,
+            {"tracks.$id:track_id=1.$add": True},
+            ["tracks._add_"]
         )
         self.assertTrue(len(playlist.tracks) == 2)
 
@@ -814,8 +878,8 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_resources(self):
         """Test simple get_resources functionality."""
         query_params = {
-            "album_id_$lt": "10",
-            "$query": json.dumps({"title": "Big Ones"})
+            "album_id-lt": "10",
+            "query": json.dumps({"title": "Big Ones"})
         }
         result = get_resources(
             self.db_session,
@@ -829,15 +893,15 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_resources_filters(self):
         """Test simple get_resources filtering functionality."""
         query_params = {
-            "album_id_$lt": "10",
-            "title_$like": "Big",
-            "album_id_$gt": 4,
-            "album_id_$gte": 5,
-            "album_id_$lte": 5,
-            "album_id_$eq": 5,
+            "album_id-lt": "10",
+            "title-like": "Big",
+            "album_id-gt": 4,
+            "album_id-gte": 5,
+            "album_id-lte": 5,
+            "album_id-eq": 5,
             "album_id": 5,
-            "album_id_$ne": 6,
-            "$query": json.dumps({"title": "Big Ones"})
+            "album_id-ne": 6,
+            "query": json.dumps({"title": "Big Ones"})
         }
         result = get_resources(
             self.db_session,
@@ -869,8 +933,8 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_resource(self):
         """Test simple get_resource functionality."""
         query_params = {
-            "album_id_$lt": "10",
-            "$query": json.dumps({"title": "Big Ones"})
+            "album_id-lt": "10",
+            "query": json.dumps({"title": "Big Ones"})
         }
         result = get_resource(
             self.db_session,
@@ -881,9 +945,9 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_resource_list_param(self):
         """Test get_resource functionality with list query params."""
         query_params = {
-            "album_id_$lt": ["10", "6"],
-            "$query": [json.dumps({"title": "Big Ones"}),
-                       json.dumps({"album_id": "5"})]
+            "album_id-lt": ["10", "6"],
+            "query": [json.dumps({"title": "Big Ones"}),
+                      json.dumps({"album_id": "5"})]
         }
         result = get_resource(
             self.db_session,
@@ -894,7 +958,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_resource_bad_query(self):
         """Ensure get_resource fails when passed bad query parameters."""
         query_params = {
-            "$query": json.dumps(["Big Ones"])
+            "query": json.dumps(["Big Ones"])
         }
         self.assertRaises(
             InvalidMQLException,
@@ -904,9 +968,9 @@ class RESTfulchemyTests(unittest.TestCase):
             query_params)
 
     def test_get_resources_ordered(self):
-        """Test simple get_resources ~order_by functionality."""
+        """Test simple get_resources sort functionality."""
         query_params = {
-            "~order_by": "album_id~DESC-title~ASC"
+            "order_by": "album_id-DESC+title-ASC"
         }
         result = get_resources(
             self.db_session,
@@ -920,7 +984,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_first_page(self):
         """Test that we can get the first page of a set of objects."""
         query_params = {
-            "~order_by": "album_id~ASC"
+            "orderBy": "album_id-ASC"
         }
         result = get_resources(
             self.db_session,
@@ -948,7 +1012,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_no_page_max_size_fail(self):
         """Not providing a max page size with page > 1 should fail."""
         query_params = {
-            "~order_by": "album_id~ASC"
+            "orderBy": "album_id-ASC"
         }
         self.assertRaises(
             ValueError,
@@ -972,7 +1036,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_offset(self):
         """Make sure providing an offset query_param works."""
         query_params = {
-            "~offset": "1"
+            "offset": "1"
         }
         result = get_resources(
             self.db_session,
@@ -985,7 +1049,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_offset_fail(self):
         """Make sure providing a bad offset query_param is ignored."""
         query_params = {
-            "~offset": "dafd"
+            "offset": "dafd"
         }
         result = get_resources(
             self.db_session,
@@ -996,7 +1060,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_limit(self):
         """Make sure providing a limit query_param works."""
         query_params = {
-            "~limit": "1"
+            "limit": "1"
         }
         result = get_resources(
             self.db_session,
@@ -1007,7 +1071,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_limit_fail(self):
         """Make sure providing a bad limit query_param is ignored."""
         query_params = {
-            "~limit": "dafd"
+            "limit": "dafd"
         }
         result = get_resources(
             self.db_session,
@@ -1018,7 +1082,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_limit_override(self):
         """Ensure providing a page_max_size overrides a high limit."""
         query_params = {
-            "~limit": "100"
+            "limit": "100"
         }
         result = get_resources(
             self.db_session,

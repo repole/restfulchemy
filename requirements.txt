@@ -1,2 +1,3 @@
 SQLAlchemy>=0.9
-MQLAlchemy>=0.1.3
+MQLAlchemy>=0.1.4
+inflection

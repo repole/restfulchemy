@@ -7,21 +7,34 @@ Release 0.3.0  (in progress)
 
 Features added
 --------------
-* Improved error reporting on exceptions. Any AlchemyUpdateException
-  raised now includes a dict of fieldnames with lists of errors for
-  that field.
-* Ability to validate an update prior to executing it.
-* Can now whitelist setting specifically only newly created object
-  attributes within a relationship without having to simultaneously
-  whitelist setting prior existing object's attributes. In other
-  words, whitelisting 'tracks.$new.track_id' would allow the track_id
-  of a newly created track for an album to be set, without giving
-  permission at the same time to change track_id for any already
-  existing track on that album.
+* Serialization and deserialization provided largely in part thanks to
+  Marshmallow-SQLAlchemy with some customizations built on top.
+* ``ModelResource`` class created.
+* Field name conversion on serialization and deserialization available
+  thanks to Marshmallow dump_to and load_from field attributes. Automatically
+  handled by ``ModelResource``. Makes it possible for an API to expose
+  camelCase field names despite the schema field names using underscores.
+* Query whitelisting or blacklisting based on field load_only property.
+  Automatically handled by ``ModelResource``.
+* ``EmbeddedField`` added to allow sub resource embedding and nested
+  serialization and deserialization.
 
 Incompatible changes
 --------------------
-* $id field syntax overhauled to use only url safe characters.
+* This is essentially a complete overhaul. If the prior library was more
+  mature or widely used, I'd release this as a separate library.
+* The below functions that have been removed have mostly been reincorporated
+  as part of the ModelResource class, and now depend on taking in a dict of
+  JSON data rather than form parameters.
+* Functions renamed: ``apply_order_by`` renamed to ``apply_sorts``.
+* Functions moved: ``parse_filters`` to ``restfulchemy.parser``, and both
+  ``apply_offset_and_limit`` ``apply_sorts`` to ``restfulchemy.query_builder``.
+* Functions removed: ``get_class_attributes``,  ``get_class_attributes``,
+  ``get_alchemy_primary_keys``, ``get_primary_key_dict``, ``create_resource``,
+  ``get_resources_query``, ``get_resources``, ``get_resource``, and
+  ``update_resource``.
+* Functions with modified signatures: ``parse_filters``, ``apply_sorts``,
+  ``apply_offset_and_limit``.
 
 
 Release 0.2.1
@@ -29,7 +42,7 @@ Release 0.2.1
 
 Features added
 --------------
-* Added only_parse_complex as an optional parameter for parse_filters. 
+* Added only_parse_complex as an optional parameter for parse_filters.
   Useful in bulk update situations where standard query params are used
   for update statements rather than filters.
 

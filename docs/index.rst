@@ -5,19 +5,33 @@
 
 .. include:: ../README.rst
 
+
+Guide
+=====
+
 .. toctree::
    :maxdepth: 2
-   :hidden:
-   
-   changes
+
    installation
+   querying
+   creating_updating
+
+
+API Reference
+=============
+
+.. toctree::
+    :maxdepth: 2
+
+    api_reference
+
+
+Project Info
+============
+
+.. toctree::
+   :maxdepth: 1
+
+   why
+   changes
    support
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-

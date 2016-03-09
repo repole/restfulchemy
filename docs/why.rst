@@ -28,5 +28,5 @@ transaction is desired, where if any part of the process fails, all of it
 should fail. Many RESTful API frameworks make this inherently difficult to
 accomplish.
 
-See the :ref:`querying <creating_updating>` section for an example of how this
-works.
+See the :ref:`creating and updating resources <creating_updating>` section for
+an example of how this works.

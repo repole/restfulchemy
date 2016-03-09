@@ -9,6 +9,7 @@ from sqlalchemy.inspection import inspect
 
 
 class EmbeddedField(Field):
+    """Contains a default field and an embeddable field."""
     def __init__(self, default_field, embedded_field, embedded=False, *args,
                  **kwargs):
         self._embedded = embedded
@@ -31,12 +32,14 @@ class EmbeddedField(Field):
             self._add_to_schema(inactive_field.name, schema)
 
     def embed(self):
+        """Embed the non default field."""
         if not self.embedded:
             self._embedded = True
             self._active_field = self.embedded_field
             self._rebind_field()
 
     def unembed(self):
+        """Restore the default field."""
         if self.embedded:
             self._embedded = False
             self._active_field = self.default_field
@@ -44,26 +47,32 @@ class EmbeddedField(Field):
 
     @property
     def embedded(self):
+        """Return ``True`` if the embedded field is currently active."""
         return self._embedded
 
     @property
     def embedded_field(self):
+        """Get the embedded field, regardless of if it is embedded."""
         return self._embedded_field
 
     @embedded_field.setter
     def embedded_field(self, value):
+        """Replace the embedded field."""
         self._embedded_field = value
 
     @property
     def default_field(self):
+        """Return the default, non embedded field."""
         return self._default_field
 
     @default_field.setter
     def default_field(self, value):
+        """Replace the default field."""
         self._default_field = value
 
     @property
     def active_field(self):
+        """Return the embedded field if embedded, else the default."""
         if self.embedded:
             return self._embedded_field
         else:
@@ -271,30 +280,9 @@ class EmbeddedField(Field):
         ret._embedded_field = copy.deepcopy(self._embedded_field)
         return ret
 
-    #def __getattribute__(self, attrname):
-    #    if attrname in ("embedded", "_embedded",
-    #                    "embed", "unembed", "_rebind_field",
-    #                    "default_field", "_default_field",
-    #                    "embedded_field", "_embedded_field",
-    #                    "active_field", "_active_field",
-    #                    "copy", "deepcopy") or attrname.startswith("__"):
-    #        return super(EmbeddedField, self).__getattribute__(attrname)
-    #    else:
-    #        return getattr(self.active_field, attrname)
-#
-    #def __setattr__(self, attrname, value):
-    #    if attrname in ("embedded", "_embedded",
-    #                    "embed", "unembed", "_rebind_field",
-    #                    "default_field", "_default_field",
-    #                    "embedded_field", "_embedded_field",
-    #                    "active_field", "_active_field",
-    #                    "copy", "deepcopy") or attrname.startswith("__"):
-    #        return super(EmbeddedField, self).__setattr__(attrname, value)
-    #    else:
-    #        return setattr(self.active_field, attrname, value)
-
 
 class NestedRelated(Nested, Related):
+    """A nested relationship field for use in a `ModelSchema`."""
 
     def __init__(self, nested, default=missing_, exclude=tuple(), only=None,
                 many=False, column=None, **kwargs):
@@ -489,6 +477,7 @@ class NestedRelated(Nested, Related):
 
 
 class RelationshipUrl(Field):
+    """Text field, displays the sub resource url of a relationship."""
 
     def __init__(self, default=missing_, attribute=None, load_from=None,
                  dump_to=None, error=None, validate=None, required=False,
@@ -533,6 +522,7 @@ class RelationshipUrl(Field):
 
 
 class APIUrl(Field):
+    """Text field, displays the url of the resource it's attached to."""
 
     def _format(self, val):
         return val

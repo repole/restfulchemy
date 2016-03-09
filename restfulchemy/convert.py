@@ -5,6 +5,7 @@ from restfulchemy.fields import (EmbeddedField, NestedRelated, RelationshipUrl,
 
 
 class ModelResourceConverter(ModelConverter):
+    """Convert a model's fields for use in a `ModelResourceSchema`."""
 
     def _get_field_class_for_property(self, prop):
         if hasattr(prop, 'direction'):
@@ -65,11 +66,6 @@ class ModelResourceConverter(ModelConverter):
                 'embedded_field': embedded_field,
                 'embedded': False
             })
-            # kwargs.update({
-            #     'nested': prop.mapper.class_.__name__ + 'Schema',
-            #     'allow_none': nullable,
-            #     'many': prop.uselist
-            # })
 
     def property2field(self, prop, instance=True, **kwargs):
         field_class = self._get_field_class_for_property(prop)
@@ -99,11 +95,13 @@ class ModelResourceConverter(ModelConverter):
 
 
 class CamelModelResourceConverter(ModelResourceConverter):
+    """Convert a model to a schema that uses camelCase field names."""
 
     def _add_column_kwargs(self, kwargs, prop):
         """Add keyword arguments to kwargs (in-place) based on the passed in
         `Property`.
         """
+        # TODO - Embedded field kwargs...
         super(CamelModelResourceConverter, self)._add_column_kwargs(
                 kwargs, prop)
         kwargs["load_from"] = camelize(prop.key, uppercase_first_letter=False)

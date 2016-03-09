@@ -295,15 +295,6 @@ class NestedRelated(Nested, Related):
             **kwargs)
         self.columns = ensure_list(column or [])
 
-    def get_non_nested_fields(self):
-        fields = set()
-        for key in self.fields:
-            if isinstance(self.fields[key], (Nested, Related, NestedRelated)):
-                continue
-            else:
-                fields.add(key)
-        return fields
-
     @property
     def related_keys(self):
         """Gets a list of id keys associated with this nested obj.

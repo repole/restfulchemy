@@ -1,3 +1,13 @@
+"""
+    restfulchemy.converter
+    ~~~~~~~~~~~~~~~~~~~~~~
+
+    Convert SQLAlchemy models into Marshmallow schemas.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from inflection import camelize
 from marshmallow_sqlalchemy.convert import ModelConverter
 from restfulchemy.fields import (EmbeddedField, NestedRelated, RelationshipUrl,
@@ -50,12 +60,9 @@ class ModelResourceConverter(ModelConverter):
                 'embedded': False
             })
         else:
-            default_field = NestedRelated(
-                nested=prop.mapper.class_.__name__ + 'Schema',
-                allow_none=nullable,
-                many=prop.uselist,
-                only=("self", )
-            )
+            default_field = RelationshipUrl(
+                dump_only=True,
+                resource=prop.mapper.class_.__name__ + 'Resource')
             embedded_field = NestedRelated(
                 nested=prop.mapper.class_.__name__ + 'Schema',
                 allow_none=nullable,

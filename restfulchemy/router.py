@@ -1,3 +1,13 @@
+"""
+    restfulchemy.router
+    ~~~~~~~~~~~~~~~~~~~
+
+    Tools for automatically routing API url paths to resources.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from mqlalchemy import convert_to_alchemy_type
 from restfulchemy.parser import (
     parse_embeds, parse_fields, parse_filters, parse_offset_limit, parse_sorts)

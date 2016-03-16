@@ -3,7 +3,7 @@
     restfulchemy.tests.__init__
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Tests for RESTfulchemy create, get, and update methods.
+    Tests for RESTfulchemy.
 
     :copyright: (c) 2016 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
@@ -15,6 +15,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from mqlalchemy import InvalidMQLException
+from mqlalchemy.utils import dummy_gettext
 from restfulchemy.resource import UnprocessableEntityError
 from restfulchemy.tests.resources import *
 from restfulchemy.parser import (
@@ -157,6 +158,56 @@ class RESTfulchemyTests(unittest.TestCase):
             album_resource.patch,
             (album.album_id, ),
             {"artist": "TEST"})
+
+    def test_list_relation_set_fail(self):
+        """Ensure we can't set a list relation to a non object value."""
+        album = self.db_session.query(Album).filter(
+            Album.album_id == 1).all()[0]
+        album_resource = AlbumResource(db_session=self.db_session)
+        self.assertRaises(
+            UnprocessableEntityError,
+            album_resource.patch,
+            (album.album_id, ),
+            {"tracks": "TEST"})
+
+    def test_list_relation_non_item_fail(self):
+        """Ensure we can't set list relation items to a non object."""
+        album = self.db_session.query(Album).filter(
+            Album.album_id == 1).all()[0]
+        album_resource = AlbumResource(db_session=self.db_session)
+        self.assertRaises(
+            UnprocessableEntityError,
+            album_resource.patch,
+            (album.album_id, ),
+            {"tracks": ["TEST"]})
+
+    def test_list_relation_bad_item_value_fail(self):
+        """Ensure list relation item validation works."""
+        album = self.db_session.query(Album).filter(
+            Album.album_id == 1).all()[0]
+        album_resource = AlbumResource(db_session=self.db_session)
+        self.assertRaises(
+            UnprocessableEntityError,
+            album_resource.patch,
+            (album.album_id, ),
+            {"tracks": [{"bytes": "TEST"}]})
+
+    def test_error_translation(self):
+        """Ensure error message translation works."""
+        def getexcited(value, **variables):
+            """Append an exclamation point to any string."""
+            return dummy_gettext(value, **variables) + "!"
+        album = self.db_session.query(Album).filter(
+            Album.album_id == 1).all()[0]
+        album_resource = AlbumResource(db_session=self.db_session,
+                                       gettext=getexcited)
+        try:
+            album_resource.patch(
+                (album.album_id, ), {"tracks": [{"bytes": "TEST"}]})
+            # should raise an exception...
+            self.assertTrue(False)
+        except UnprocessableEntityError as e:
+            self.assertTrue(e.args[0]['tracks'][0]['name'][0].endswith("!"))
 
     def test_set_single_relation_item(self):
         """Make sure that a non-list relation can be set."""

@@ -1,6 +1,15 @@
+"""
+    restfulchemy.tests.schemas
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Schemas used for test purposes.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from mqlalchemy.tests.models import *
 from restfulchemy.schema import ModelResourceSchema
-from restfulchemy.convert import CamelModelResourceConverter
 
 
 class InvoiceLineSchema(ModelResourceSchema):

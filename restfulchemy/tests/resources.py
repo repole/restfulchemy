@@ -1,3 +1,13 @@
+"""
+    restfulchemy.tests.resources
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Resources used for test purposes.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from restfulchemy.resource import ModelResource
 from restfulchemy.tests.schemas import *
 

@@ -1,3 +1,13 @@
+"""
+    restfulchemy.query_builder
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Functions for building SQLAlchemy queries.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from restfulchemy.parser import SortInfo
 from mqlalchemy.utils import dummy_gettext
 from sqlalchemy.inspection import inspect

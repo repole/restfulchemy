@@ -1,3 +1,13 @@
+"""
+    restfulchemy.fields
+    ~~~~~~~~~~~~~~~~~~~
+
+    Marshmallow fields used in model resource schemas.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 import copy
 from marshmallow.compat import basestring
 from marshmallow.fields import Field, Nested, missing_
@@ -35,14 +45,12 @@ class EmbeddedField(Field):
         """Embed the non default field."""
         if not self.embedded:
             self._embedded = True
-            self._active_field = self.embedded_field
             self._rebind_field()
 
     def unembed(self):
         """Restore the default field."""
         if self.embedded:
             self._embedded = False
-            self._active_field = self.default_field
             self._rebind_field()
 
     @property
@@ -269,12 +277,23 @@ class EmbeddedField(Field):
         """Use the active_field implementation of context."""
         return self.active_field.context
 
+    @context.setter
+    def context(self, value):
+        """Set the active_field.context property."""
+        setattr(self.active_field, "context", value)
+
     @property
     def root(self):
         """Use the active_field implementation of root."""
         return self.active_field.root
 
+    @root.setter
+    def root(self, value):
+        """Set the active_field.root property."""
+        setattr(self.active_field, "root", value)
+
     def __deepcopy__(self, memo):
+        """Takes care of deepcopying the embedded and default fields."""
         ret = super(EmbeddedField, self).__deepcopy__(memo)
         ret._default_field = copy.deepcopy(self._default_field)
         ret._embedded_field = copy.deepcopy(self._embedded_field)
@@ -294,6 +313,11 @@ class NestedRelated(Nested, Related):
             many=many,
             **kwargs)
         self.columns = ensure_list(column or [])
+
+    @property
+    def model(self):
+        schema = self.parent
+        return schema.opts.model
 
     @property
     def related_keys(self):
@@ -320,6 +344,15 @@ class NestedRelated(Nested, Related):
         else:
             return super(NestedRelated, self).related_keys
 
+    @property
+    def schema(self):
+        result = super(NestedRelated, self).schema
+        if hasattr(result, "gettext"):
+            result.gettext = self.parent.gettext
+        result.root = self
+        result.parent = self
+        return result
+
     def _deserialize(self, value, *args, **kwargs):
         """Deserialize data into a SQLAlchemy relationship field.
 
@@ -343,15 +376,15 @@ class NestedRelated(Nested, Related):
                       this field.
 
         """
-        strict = self.root.strict
+        strict = self.parent.strict
         result = None
-        parent = self.root.instance
+        parent = self.parent.instance
         if self.many:
             data = value
             if not is_collection(value):
                 self.fail('type', input=value, type=value.__class__.__name__)
             else:
-                if not self.root.partial:
+                if not self.parent.partial:
                     setattr(parent, self.name, [])
         else:
             # Treat this like a list relation until it comes time
@@ -410,8 +443,8 @@ class NestedRelated(Nested, Related):
                     partial=True,
                     many=False)
                 with_parentable = False
-                if self.root.instance is not None:
-                    if inspect(self.root.instance).persistent:
+                if self.parent.instance is not None:
+                    if inspect(self.parent.instance).persistent:
                         with_parentable = True
                 if not sub_errors and loaded_instance == instance:
                     # Instance with this primary key exists
@@ -421,7 +454,7 @@ class NestedRelated(Nested, Related):
                     if with_parentable:
                         in_relation_instance = self.session.query(
                             self.related_model).with_parent(
-                            self.root.instance).filter_by(**{
+                            self.parent.instance).filter_by(**{
                                 column.key: obj.get(column.key)
                                 for column in self.related_keys
                             }).first()
@@ -447,7 +480,7 @@ class NestedRelated(Nested, Related):
             if not sub_errors and instance is not None and self.many:
                 if op == "remove":
                     if instance_is_in_relation:
-                        if self.root.partial:
+                        if self.parent.partial:
                             # no need to remove if not partial, as the
                             # list will already be empty.
                             relation = getattr(parent, self.name)

@@ -1,3 +1,13 @@
+"""
+    restfulchemy.resource
+    ~~~~~~~~~~~~~~~~~~~~~
+
+    Base classes for building resources and model resources.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from marshmallow.compat import with_metaclass
 from mqlalchemy import apply_mql_filters, InvalidMQLException
 from mqlalchemy.utils import dummy_gettext
@@ -125,14 +135,16 @@ class BaseModelResource(ResourceABC):
 
         """
         split_keys = key.split(".")
-        schema = self.schema_class()
+        schema = self.schema_class(
+            context=self.schema_context,
+            gettext=self.gettext)
         for i, key in enumerate(split_keys):
             if key in schema.fields:
                 field = schema.fields[key]
                 if field.load_only:
                     return False
                 elif isinstance(field, EmbeddedField):
-                    field.embed()
+                    schema.embed([key])
                     if hasattr(field.active_field, "schema"):
                         schema = field.active_field.schema
                     else:
@@ -152,7 +164,9 @@ class BaseModelResource(ResourceABC):
         :param key: Name of the field as it was serialized.
 
         """
-        schema = self.schema_class(context=self.schema_context)
+        schema = self.schema_class(
+            context=self.schema_context,
+            gettext=self.gettext)
         split_keys = key.split(".")
         result_keys = []
         for key in split_keys:
@@ -168,7 +182,7 @@ class BaseModelResource(ResourceABC):
             if field is not None:
                 result_keys.append(field.name)
                 if isinstance(field, EmbeddedField):
-                    field.embed()
+                    schema.embed([key])
                     if hasattr(field.active_field, "schema"):
                         schema = field.active_field.schema
                 if hasattr(field, "schema"):
@@ -207,7 +221,9 @@ class BaseModelResource(ResourceABC):
         if not (isinstance(ident, tuple) or
                 isinstance(ident, list)):
             ident = (ident,)
-        schema = self.schema_class(context=self.schema_context)
+        schema = self.schema_class(
+            context=self.schema_context,
+            gettext=self.gettext)
         for i, field_name in enumerate(schema.id_keys):
             field = schema.fields.get(field_name)
             filter_name = field.dump_to or field_name
@@ -282,9 +298,12 @@ class BaseModelResource(ResourceABC):
                     converted_fields.append(embed_field)
             schema = self.schema_class(
                 only=tuple(converted_fields),
-                context=self.schema_context)
+                context=self.schema_context,
+                gettext=self.gettext)
         else:
-            schema = self.schema_class(context=self.schema_context)
+            schema = self.schema_class(
+                context=self.schema_context,
+                gettext=self.gettext)
         # actually attempt to embed now
         for converted_embed in converted_embeds:
             try:
@@ -320,7 +339,9 @@ class BaseModelResource(ResourceABC):
         if not (isinstance(ident, tuple) or
                 isinstance(ident, list)):
             ident = (ident,)
-        schema = self.schema_class(context=self.schema_context)
+        schema = self.schema_class(
+            context=self.schema_context,
+            gettext=self.gettext)
         for i, field_name in enumerate(schema.id_keys):
             field = schema.fields.get(field_name)
             filter_name = field.dump_to or field_name
@@ -346,7 +367,10 @@ class BaseModelResource(ResourceABC):
 
     def post(self, data):
         """Create a new object and store it in the db."""
-        schema = self.schema_class(partial=False, context=self.schema_context)
+        schema = self.schema_class(
+            partial=False,
+            context=self.schema_context,
+            gettext=self.gettext)
         instance, errors = schema.load(data, session=self.db_session)
         if errors:
             self.db_session.rollback()
@@ -360,8 +384,11 @@ class BaseModelResource(ResourceABC):
         """Replace the current object with the supplied one."""
         obj = data
         instance = self._get_instance(ident)
-        schema = self.schema_class(partial=False, instance=instance,
-                                   context=self.schema_context)
+        schema = self.schema_class(
+            partial=False,
+            instance=instance,
+            context=self.schema_context,
+            gettext=self.gettext)
         instance, errors = schema.load(
             obj, session=self.db_session)
         if errors:
@@ -375,8 +402,11 @@ class BaseModelResource(ResourceABC):
         """Update an object with new values."""
         obj = data
         instance = self._get_instance(ident)
-        schema = self.schema_class(partial=True, instance=instance,
-                                   context=self.schema_context)
+        schema = self.schema_class(
+            partial=True,
+            instance=instance,
+            context=self.schema_context,
+            gettext=self.gettext)
         instance, errors = schema.load(
             obj, session=self.db_session)
         if errors:
@@ -498,8 +528,10 @@ class BaseModelResource(ResourceABC):
             raise BadRequestException(
                 {"error": _("Post data must be a list of resources.")})
         for obj in data:
-            schema = self.schema_class(partial=False,
-                                       context=self.schema_context)
+            schema = self.schema_class(
+                partial=False,
+                context=self.schema_context,
+                gettext=self.gettext)
             instance, errors = schema.load(obj, self.db_session)
             if errors is None:
                 self.db_session.add(instance)
@@ -528,8 +560,10 @@ class BaseModelResource(ResourceABC):
                 {"error": _("Patch data must be a list of resources.")})
         for obj in data:
             if obj.get("$op") == "add":
-                schema = self.schema_class(partial=False,
-                                           context=self.schema_context)
+                schema = self.schema_class(
+                    partial=False,
+                    context=self.schema_context,
+                    gettext=self.gettext)
                 instance, errors = schema.load(obj, self.db_session)
                 if errors is None:
                     self.db_session.add(instance)
@@ -537,8 +571,10 @@ class BaseModelResource(ResourceABC):
                     self.db_session.rollback()
                     raise UnprocessableEntityError(errors)
             elif obj.get("$op") == "remove":
-                schema = self.schema_class(partial=True,
-                                           context=self.schema_context)
+                schema = self.schema_class(
+                    partial=True,
+                    context=self.schema_context,
+                    gettext=self.gettext)
                 instance, errors = schema.load(obj, self.db_session)
                 if errors is None:
                     self.db_session.remove(instance)
@@ -546,8 +582,10 @@ class BaseModelResource(ResourceABC):
                     self.db_session.rollback()
                     raise UnprocessableEntityError(errors)
             else:
-                schema = self.schema_class(partial=True,
-                                           context=self.schema_context)
+                schema = self.schema_class(
+                    partial=True,
+                    context=self.schema_context,
+                    gettext=self.gettext)
                 instance, errors = schema.load(obj, self.db_session)
                 if errors is not None:
                     self.db_session.rollback()

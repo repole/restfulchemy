@@ -1,3 +1,13 @@
+"""
+    restfulchemy.schema
+    ~~~~~~~~~~~~~~~~~~~
+
+    Functions for parsing query info from url parameters.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from collections import namedtuple
 from mqlalchemy import InvalidMQLException
 from mqlalchemy.utils import dummy_gettext

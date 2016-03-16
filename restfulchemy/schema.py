@@ -1,15 +1,52 @@
+"""
+    restfulchemy.schema
+    ~~~~~~~~~~~~~~~~~~~
+
+    Classes for building REST API friendly, model based schemas.
+
+    :copyright: (c) 2016 by Nicholas Repole and contributors.
+                See AUTHORS for more details.
+    :license: MIT - See LICENSE for more details.
+"""
 from inflection import camelize, pluralize
+from marshmallow.base import FieldABC, SchemaABC
 from marshmallow_sqlalchemy.fields import get_primary_keys
 from marshmallow_sqlalchemy.schema import ModelSchema, ModelSchemaOpts
+from mqlalchemy.utils import dummy_gettext
 from restfulchemy.convert import ModelResourceConverter
 from restfulchemy.fields import EmbeddedField
 
 
 class ModelResourceSchemaOpts(ModelSchemaOpts):
-    """Simple options class for use with a `ModelResourceSchema`."""
+    """Meta class options for use with a `ModelResourceSchema`.
+
+    Defaults ``model_converter`` to
+    :class:`~restfulchemy.convert.ModelResourceConverter`.
+
+    Defaults ``id_keys`` to ``None``, resulting in the model's
+    primary keys being used as identifier fields.
+
+    Example usage:
+
+    .. code-block:: python
+
+        class UserSchema(ModelResourceSchema):
+            class Meta:
+                # Use username to identify a user resource
+                # rather than user_id.
+                id_keys = ["username"]
+                # Alternate converter to dump/load with camel case.
+                model_converter = CamelModelResourceConverter
+
+    """
 
     def __init__(self, meta):
-        """Handle the meta class attached to a `ModelResourceSchema`."""
+        """Handle the meta class attached to a `ModelResourceSchema`.
+
+        :param meta: The meta class attached to a
+            :class:`~restfulchemy.resource.ModelResourceSchema`.
+
+        """
         super(ModelResourceSchemaOpts, self).__init__(meta)
         self.id_keys = getattr(meta, 'id_keys', None)
         self.model_converter = getattr(
@@ -17,22 +54,25 @@ class ModelResourceSchemaOpts(ModelSchemaOpts):
 
 
 class ModelResourceSchema(ModelSchema):
-    """Schema meant to be used with the `ModelResource` class.
+    """Schema meant to be used with a `ModelResource`.
 
-    Enables sub-resource embedding, context processing, and more.
+    Enables sub-resource embedding, context processing, error
+    translation, and more.
 
     """
 
     OPTIONS_CLASS = ModelResourceSchemaOpts
 
     def __init__(self, *args, **kwargs):
-        """Sets additional member vars on top of `ModelResource`.
+        """Sets additional member vars on top of `ModelSchema`.
 
         Also runs :meth:`process_context` upon completion.
 
-        :param gettext: Used to translate error messages.
+        :param gettext: Used to translate error messages. Must be
+            a callable.
 
         """
+        self._gettext = kwargs.pop("gettext", None)
         super(ModelResourceSchema, self).__init__(*args, **kwargs)
         self.fields_by_dump_to = {}
         for key in self.fields:
@@ -48,12 +88,14 @@ class ModelResourceSchema(ModelSchema):
                 self.fields_by_load_from[field.load_from] = field
             else:
                 self.fields_by_load_from[field.name] = field
-        self.gettext = kwargs.pop("gettext", None)
         self.process_context()
 
     def get_instance(self, data):
-        """Retrieve an existing record by primary key(s)."""
-        # TODO - Check that data comes in already converted here.
+        """Retrieve an existing record by primary key(s).
+
+        :param dict data: Data associated with this instance.
+
+        """
         keys = self.id_keys
         filters = {
             key: data.get(key)
@@ -68,7 +110,12 @@ class ModelResourceSchema(ModelSchema):
         return None
 
     def embed(self, items):
-        """Embed the list of field names provided."""
+        """Embed the list of field names provided.
+
+        :param list items: A list of embeddable sub resources or
+            sub resource fields.
+
+        """
         for item in items:
             split_names = item.split(".")
             parent = self
@@ -78,6 +125,8 @@ class ModelResourceSchema(ModelSchema):
                                   EmbeddedField):
                         field = parent.fields[split_name]
                         field.embed()
+                        if hasattr(field.active_field, "process_context"):
+                            field.active_field.process_context()
                         if hasattr(field.active_field, "schema"):
                             parent = field.active_field.schema
                         else:
@@ -93,7 +142,7 @@ class ModelResourceSchema(ModelSchema):
 
     @property
     def id_keys(self):
-        """Get the fields used to identify resource instances."""
+        """Get the fields used to identify a resource instance."""
         if (hasattr(self.opts, "id_keys") and
                 isinstance(self.opts.id_keys, list)):
             return self.opts.id_keys
@@ -112,20 +161,59 @@ class ModelResourceSchema(ModelSchema):
         return camelize(pluralize(result), uppercase_first_letter=False)
 
     def load(self, data, session=None, instance=None, *args, **kwargs):
-        """Deserialize the provided data into a SQLAlchemy object."""
+        """Deserialize the provided data into a SQLAlchemy object.
+
+        :param dict data: Data to be loaded into an instance.
+        :param session: Optional database session. Will be used in place
+            of ``self.session`` if provided.
+        :param instance: SQLAlchemy model instance data should be loaded
+            into. If ``None`` is provided at this point or when the
+            class was initialized, an instance will either be determined
+            using the provided data via :meth:`get_instance`, or if that
+            fails a new instance will be created.
+        :return: An instance with the provided data loaded into it.
+
+        """
         for key in data:
             if (key in self.fields and
                     isinstance(self.fields[key], (EmbeddedField,))):
-                self.fields[key].embed()
-        if self.instance is None:
-            self.instance = self.opts.model()
+                self.embed([key])
+        # make sure self.instance isn't None
+        if instance is not None:
+            self.instance = instance
+        elif self.instance is None:
+            self.instance = self.get_instance(data)
+            if self.instance is None:
+                self.instance = self.opts.model()
         return super(ModelResourceSchema, self).load(
              data, session, instance, *args, **kwargs)
 
     def handle_error(self, error, data):
-        """TODO - Translate errors here."""
-        pass
+        """Modifies error messages."""
+        messages = error.messages
+        for key in messages:
+            if isinstance(messages[key], list):
+                for i in range(0, len(messages[key])):
+                    messages[key][i] = self.translate_error(messages[key][i])
 
     def process_context(self):
-        """Any sort of context handling should be done here."""
+        """Override to modify a schema based on context."""
         pass
+
+    def translate_error(self, value, **variables):
+        """Override to modify a schema based on context.
+
+        :param value: An error string to be translated.
+
+        """
+        if self._gettext is None:
+            parent = self.root
+            if isinstance(parent, FieldABC):
+                if hasattr(parent, "root"):
+                    parent = parent.root
+            if isinstance(parent, SchemaABC):
+                if hasattr(parent, "translate_error"):
+                    return parent.translate_error(value, **variables)
+        elif callable(self._gettext):
+            return self._gettext(value, **variables)
+        return dummy_gettext(value, **variables)

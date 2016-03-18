@@ -15,74 +15,206 @@ from restfulchemy import resource_class_registry
 from restfulchemy.fields import EmbeddedField, NestedRelated
 from restfulchemy.query_builder import (
     apply_load_options, apply_sorts, apply_offset_and_limit, SortInfo)
+from sqlalchemy.exc import SQLAlchemyError
 
 
 class UnprocessableEntityError(Exception):
+
+    """Exception for when provided data is unable to be deserialized."""
+
     pass
 
 
 class BadRequestException(Exception):
+
+    """Exception for when a request is unable to be processed."""
+
     pass
 
 
 class ResourceNotFoundError(Exception):
+
+    """Exception for when a requested resource cannot be found."""
+
     pass
 
 
 class ResourceABC(object):
 
-    def get(self, ident, fields, embeds, parent=None,
-            parent_relationship=None, strict=True):
-        raise NotImplementedError
+    """Abstract resource base class."""
 
-    def put(self, ident, data):
-        raise NotImplementedError
+    def get(self, ident):
+        """Get an instance of this resource.
 
-    def patch(self, ident, data):
+        :param ident: Identifying info for the resource.
+        :return: The resource itself if found.
+        :raise ResourceNotFoundError: If no such resource exists.
+
+        """
         raise NotImplementedError
 
     def post(self, data):
+        """Create a resource with the supplied data.
+
+        :param data: Data used to create the resource.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The created resource.
+
+        """
+        raise NotImplementedError
+
+    def put(self, ident, data):
+        """Replace the identified resource with the supplied one.
+
+        :param ident: Identifying info for the resource.
+        :param data: Data used to replace the resource.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The replaced resource.
+
+        """
+        raise NotImplementedError
+
+    def patch(self, ident, data):
+        """Update the identified resource with the supplied data.
+
+        :param ident: Identifying info for the resource.
+        :param data: Data used to update the resource.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The updated resource.
+
+        """
         raise NotImplementedError
 
     def delete(self, ident):
+        """Delete the identified resource.
+
+        :param ident: Identifying info for the resource.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :return: `None`
+
+        """
         raise NotImplementedError
 
-    def get_collection(self, filters=None, fields=None, embeds=None,
-                       sorts=None, offset=None, limit=None, parent=None,
-                       parent_relationship=None, strict=True):
-        raise NotImplementedError
-
-    def put_collection(self, data):
-        raise NotImplementedError
-
-    def patch_collection(self, data):
+    def get_collection(self):
+        """Get a collection of resources."""
         raise NotImplementedError
 
     def post_collection(self, data):
+        """Create multiple resources in the collection of resources.
+
+        :param data: Data used to create the collection of resources.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: `None`
+
+        """
         raise NotImplementedError
 
-    def delete_collection(self, data):
+    def put_collection(self, data):
+        """Replace the entire collection of resources.
+
+        :param data: Data used to replace the collection of resources.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: `None`
+
+        """
+        raise NotImplementedError
+
+    def patch_collection(self, data):
+        """Update the collection of resources.
+
+        :param data: Data used to update the collection of resources.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: `None`
+
+        """
+        raise NotImplementedError
+
+    def delete_collection(self):
+        """Delete all members of the collection of resources."""
         raise NotImplementedError
 
 
 class ModelResourceOpts(object):
 
+    """Meta class options for use with a `ModelResource`.
+
+    A ``schema_class`` option must be provided.
+
+    Example usage:
+
+    .. code-block:: python
+
+        class UserResource(ModelResource):
+            class Meta:
+                schema_class = UserSchema
+
+    """
+
     def __init__(self, meta):
+        """Handle the meta class attached to a `ModelResource`.
+
+        :param meta: The meta class attached to a
+            :class:`~restfulchemy.resource.ModelResource`.
+
+        """
         self.schema_class = getattr(meta, "schema_class", None)
 
 
 class ModelResourceMeta(type):
 
+    """Meta class inherited by `ModelResource`.
+
+    This is ultimately responsible for attaching an ``opts`` object to
+    :class:`ModelResource`, as well as registering that class with the
+    ``resource_class_registry``.
+
+    """
+
     def __new__(mcs, name, bases, attrs):
+        """Sets up meta class options for a given ModelResource class.
+
+        :param mcs: This :class:`ModelResourceMeta` class.
+        :param str name: Class name of the
+            :class:`~restfulchemy.resource.ModelResource` that this meta
+            class is attached to.
+        :param tuple bases: Base classes the associated class inherits
+            from.
+        :param dict attrs: Dictionary of info pertaining to the class
+            this meta class is attached to. Includes the __module__ the
+            class is in, the __qualname__ of the class, and potentially
+            __doc__ for the class.
+
+        """
         klass = super(ModelResourceMeta, mcs).__new__(mcs, name, bases, attrs)
         meta = getattr(klass, 'Meta')
         klass.opts = klass.OPTIONS_CLASS(meta)
         return klass
 
-    def __init__(self, name, bases, attrs):
-        # self is the class obj
-        super(ModelResourceMeta, self).__init__(name, bases, attrs)
-        resource_class_registry.register(name, self)
+    def __init__(cls, name, bases, attrs):
+        """Initializes the meta class for a `ModelResource` class.
+
+        :param cls: This :class:`ModelResourceMeta` class.
+        :param name: Class name of the
+            :class:`~restfulchemy.resource.ModelResource` that this meta
+            class is attached to.
+        :param tuple bases: Base classes the associated class inherits
+            from.
+        :param dict attrs: Dictionary of info pertaining to the class
+            this meta class is attached to. Includes the __module__ the
+            class is in, the __qualname__ of the class, and potentially
+            __doc__ for the class.
+
+        """
+        super(ModelResourceMeta, cls).__init__(name, bases, attrs)
+        resource_class_registry.register(name, cls)
 
 
 class BaseModelResource(ResourceABC):
@@ -106,12 +238,28 @@ class BaseModelResource(ResourceABC):
         """
         pass
 
-    # TODO - Handle schema context
-    def __init__(self, db_session, schema_context=None, page_max_size=None,
+    def __init__(self, session, schema_context=None, page_max_size=None,
                  gettext=None):
+        """Creates a new instance of the model.
+
+        :param session: Database session to use for any resource
+            actions.
+        :type session: :class:`~sqlalchemy.orm.session.Session`
+        :param schema_context: Context used to alter the schema used
+            for this resource. For example, may contain the current
+            authorization status of the current request.
+        :type schema_context: dict or None
+        :param page_max_size: Used to determine the maximum number of
+            results to return by :meth:`get_collection`.
+        :type page_max_size: int, callable, or None
+        :param gettext: Used to translate any error messages that may
+            pop up.
+        :type gettext: int, callable, or None
+
+        """
         self._page_max_size = page_max_size
         self._schema_context = schema_context
-        self._db_session = db_session
+        self._session = session
         self.gettext = gettext
         if self.gettext is None:
             self.gettext = dummy_gettext
@@ -132,6 +280,10 @@ class BaseModelResource(ResourceABC):
         Uses the load_only property for the resource's schema fields
         to determine whether the field should be queryable. Also handles
         nested queries without issue.
+
+        :param str key: Dot notation field name. For example, if trying
+            to query an album, this may look something like
+            ``"tracks.playlists.track_id"``.
 
         """
         split_keys = key.split(".")
@@ -161,7 +313,8 @@ class BaseModelResource(ResourceABC):
     def convert_key_name(self, key):
         """Given a dumped key name, convert to the name of the field.
 
-        :param key: Name of the field as it was serialized.
+        :param str key: Name of the field as it was serialized, using
+            dot notation for nested fields.
 
         """
         schema = self.schema_class(
@@ -193,12 +346,12 @@ class BaseModelResource(ResourceABC):
         return ".".join(result_keys)
 
     @property
-    def db_session(self):
+    def session(self):
         """Get a db session to use for this request."""
-        if callable(self._db_session):
-            return self._db_session()
+        if callable(self._session):
+            return self._session()
         else:
-            return self._db_session
+            return self._session
 
     @property
     def page_max_size(self):
@@ -210,13 +363,19 @@ class BaseModelResource(ResourceABC):
 
     @property
     def schema_context(self):
+        """Return the schema context for this resource."""
         if callable(self._schema_context):
             return self._schema_context()
         else:
             return self._schema_context
 
     def _get_ident_filters(self, ident):
-        """Generate MQLAlchemy filters using a resource identity."""
+        """Generate MQLAlchemy filters using a resource identity.
+
+        :param ident: A value used to identify this resource.
+            See :meth:`get` for more info.
+
+        """
         filters = {}
         if not (isinstance(ident, tuple) or
                 isinstance(ident, list)):
@@ -231,9 +390,14 @@ class BaseModelResource(ResourceABC):
         return filters
 
     def _get_instance(self, ident):
-        """Given an identity, get the associated SQLAlchemy instance."""
+        """Given an identity, get the associated SQLAlchemy instance.
+
+        :param ident: A value used to identify this resource.
+            See :meth:`get` for more info.
+
+        """
         filters = self._get_ident_filters(ident)
-        query = self.db_session.query(self.model)
+        query = self.session.query(self.model)
         query = apply_mql_filters(
             query,
             model_class=self.model,
@@ -244,14 +408,36 @@ class BaseModelResource(ResourceABC):
             gettext=self.gettext)
         return query.first()
 
-    def _get_schema_and_query(self, db_session, filters, fields=None,
-                              embeds=None, parent=None,
-                              parent_relationship=None, strict=True):
-        """Used to generate a schema and query for this request."""
+    def _get_schema_and_query(self, session, filters, fields=None,
+                              embeds=None, strict=True):
+        """Used to generate a schema and query for this request.
+
+        :param session: See :meth:`get` for more info.
+        :type session: :class:`~sqlalchemy.orm.session.Session` or
+            :class:`~sqlalchemy.orm.query.Query`
+        :param filters: MQLAlchemy filters to be applied on this query.
+        :type filters: list or None
+        :param fields: Names of fields to be included in the result.
+        :type fields: list or None
+        :param embeds: A list of relationship and relationship field
+            names to be included in the result.
+        :type embeds: list or None
+        :param bool strict: If `True`, will raise an exception when bad
+            parameters are passed. If `False`, will quietly ignore any
+            bad input and treat it as if none was provided.
+        :raise BadRequestException: Invalid filters, fields, or embeds
+            will result in a raised exception if strict is `True`.
+        :return: A schema and query conforming to the supplied
+            parameters.
+        :rtype: :class:`~restfulchemy.schema.ModelResourceSchema`,
+            :class:`~sqlalchemy.orm.query.Query`
+
+        """
         _ = self.gettext
-        query = db_session.query(self.model)
-        if parent is not None:
-            query = query.with_parent(parent, parent_relationship)
+        if hasattr(session, "query"):
+            query = session.query(self.model)
+        else:
+            query = session
         # embed converting
         # name mapping used purely for error purposes
         # key is converted name, value is orig attr name
@@ -331,14 +517,40 @@ class BaseModelResource(ResourceABC):
                 raise BadRequestException({"error": str(ex)})
         return schema, query
 
-    def get(self, ident, fields, embeds, parent=None,
-            parent_relationship=None, strict=True):
-        """Return an individual instance of this resource."""
+    def get(self, ident, fields=None, embeds=None, session=None, strict=True):
+        """Get the identified resource.
+
+        :param ident: A value used to identify this resource. If the
+            schema associated with this resource has multiple
+            ``id_keys``, this value may be a list or tuple.
+        :param fields: Names of fields to be included in the result.
+        :type fields: list or None
+        :param embeds: A list of relationship and relationship field
+            names to be included in the result.
+        :type embeds: list or None
+        :param session: Optional sqlalchemy session override. May also
+            be a partially formed SQLAlchemy query, allowing for
+            sub-resource queries by using
+            :meth:~`sqlalchemy.orm.query.Query.with_parent`.
+        :type session: :class:`~sqlalchemy.orm.session.Session` or
+            :class:`~sqlalchemy.orm.query.Query`
+        :param bool strict: If `True`, will raise an exception when bad
+            parameters are passed. If `False`, will quietly ignore any
+            bad input and treat it as if none was provided.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :raise BadRequestException: Invalid fields or embeds will result
+            in a raised exception if strict is set to `True`.
+        :return: The resource itself if found.
+        :rtype: dict
+
+        """
         _ = self.gettext
         filters = {}
         if not (isinstance(ident, tuple) or
                 isinstance(ident, list)):
             ident = (ident,)
+        if session is None:
+            session = self.session
         schema = self.schema_class(
             context=self.schema_context,
             gettext=self.gettext)
@@ -347,41 +559,57 @@ class BaseModelResource(ResourceABC):
             filter_name = field.dump_to or field_name
             filters[filter_name] = ident[i]
         schema, query = self._get_schema_and_query(
-            self.db_session, filters, fields, embeds, parent,
-            parent_relationship, strict)
+            session=session,
+            filters=filters,
+            fields=fields,
+            embeds=embeds,
+            strict=strict)
         instance = query.first()
         if instance is not None:
             return schema.dump(instance).data
         else:
             raise ResourceNotFoundError(_("Resource not found."))
 
-    def delete(self, ident):
-        """Remove a resource."""
-        _ = self.gettext
-        instance = self._get_instance(ident)
-        if instance:
-            self.db_session.remove(instance)
-            self.db_session.commit()
-        else:
-            raise ResourceNotFoundError(_("Resource not found."))
-
     def post(self, data):
-        """Create a new object and store it in the db."""
+        """Create a new resource and store it in the db.
+
+        :param dict data: Data used to create a new resource.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The created resource.
+        :rtype: dict
+
+        """
         schema = self.schema_class(
             partial=False,
             context=self.schema_context,
             gettext=self.gettext)
-        instance, errors = schema.load(data, session=self.db_session)
+        instance, errors = schema.load(data, session=self.session)
         if errors:
-            self.db_session.rollback()
+            self.session.rollback()
             raise UnprocessableEntityError(errors)
         else:
-            self.db_session.add(instance)
-            self.db_session.commit()
+            self.session.add(instance)
+            try:
+                self.session.commit()
+            except SQLAlchemyError:
+                self.session.rollback()
+                raise UnprocessableEntityError()
             return schema.dump(instance).data
 
     def put(self, ident, data):
-        """Replace the current object with the supplied one."""
+        """Replace the current object with the supplied one.
+
+        :param ident: A value used to identify this resource.
+            See :meth:`get` for more info.
+        :param dict data: Data used to replace the resource.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The replaced resource.
+        :rtype: dict
+
+        """
         obj = data
         instance = self._get_instance(ident)
         schema = self.schema_class(
@@ -390,16 +618,31 @@ class BaseModelResource(ResourceABC):
             context=self.schema_context,
             gettext=self.gettext)
         instance, errors = schema.load(
-            obj, session=self.db_session)
+            obj, session=self.session)
         if errors:
-            self.db_session.rollback()
+            self.session.rollback()
             raise UnprocessableEntityError(errors)
         if instance:
-            self.db_session.commit()
+            try:
+                self.session.commit()
+            except SQLAlchemyError:
+                self.session.rollback()
+                raise UnprocessableEntityError()
             return schema.dump(instance).data
 
     def patch(self, ident, data):
-        """Update an object with new values."""
+        """Update the identified resource with the supplied data.
+
+        :param ident: A value used to identify this resource.
+            See :meth:`get` for more info.
+        :param dict data: Data used to update the resource.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: The updated resource.
+        :rtype: dict
+
+        """
         obj = data
         instance = self._get_instance(ident)
         schema = self.schema_class(
@@ -408,43 +651,82 @@ class BaseModelResource(ResourceABC):
             context=self.schema_context,
             gettext=self.gettext)
         instance, errors = schema.load(
-            obj, session=self.db_session)
+            obj, session=self.session)
         if errors:
-            self.db_session.rollback()
+            self.session.rollback()
             raise UnprocessableEntityError(errors)
         if instance:
-            self.db_session.commit()
+            try:
+                self.session.commit()
+            except SQLAlchemyError:
+                self.session.rollback()
+                raise UnprocessableEntityError()
             return schema.dump(instance).data
 
+    def delete(self, ident):
+        """Delete the identified resource.
+
+        :param ident: A value used to identify this resource.
+            See :meth:`get` for more info.
+        :raise ResourceNotFoundError: If no such resource exists.
+        :return: `None`
+
+        """
+        _ = self.gettext
+        instance = self._get_instance(ident)
+        if instance:
+            self.session.remove(instance)
+            try:
+                self.session.commit()
+            except SQLAlchemyError:
+                self.session.rollback()
+                raise UnprocessableEntityError()
+        else:
+            raise ResourceNotFoundError(_("Resource not found."))
+
     def get_collection(self, filters=None, fields=None, embeds=None,
-                       sorts=None, offset=None, limit=None, parent=None,
-                       parent_relationship=None, strict=True):
+                       sorts=None, offset=None, limit=None, session=None,
+                       strict=True):
         """Get a collection of resources.
 
         :param filters: MQLAlchemy filters to be applied on this query.
-        :param fields: A list of fields to be included in the result.
-        :param embeds: A list of relationships and relationship fields
-            to be included in the result.
-        :param sorts: A list of :class:`SortInfo` to be applied to this
-            query.
+        :type filters: list or None
+        :param fields: Names of fields to be included in the result.
+        :type fields: list or None
+        :param embeds: A list of relationship and relationship field
+            names to be included in the result.
+        :type embeds: list or None
+        :param sorts: Sorts to be applied to this query.
+        :type sorts: list of :class:`SortInfo`, or None
         :param offset: Standard SQL offset to be applied to the query.
+        :type offset: int or None
         :param limit: Standard SQL limit to be applied to the query.
-        :param strict: If `True`, will raise an exception when bad
+        :type limit: int or None
+        :param session: Optional sqlalchemy session override. See
+            :meth:`get` for more info.
+        :type session: :class:`~sqlalchemy.orm.session.Session` or
+            :class:`~sqlalchemy.orm.query.Query`
+        :param bool strict: If `True`, will raise an exception when bad
             parameters are passed. If `False`, will quietly ignore any
             bad input and treat it as if none was provided.
-        :returns: A list of resources meeting the supplied criteria.
-        :raises BadRequestException: Invalid filters, sorts, fields,
+        :raise BadRequestException: Invalid filters, sorts, fields,
             embeds, offset, or limit will result in a raised exception
             if strict is set to `True`.
+        :return: Resources meeting the supplied criteria.
+        :rtype: list
 
         """
-        # TODO - error codes?
         _ = self.gettext
         if filters is None:
             filters = {}
+        if session is None:
+            session = self.session
         schema, query = self._get_schema_and_query(
-            self.db_session, filters, fields, embeds, parent,
-            parent_relationship, strict)
+            session=session,
+            filters=filters,
+            fields=fields,
+            embeds=embeds,
+            strict=strict)
         # sort
         if sorts:
             if isinstance(sorts, list):
@@ -522,7 +804,14 @@ class BaseModelResource(ResourceABC):
         return dump.data
 
     def post_collection(self, data):
-        """Bulk add newly created items to collection."""
+        """Create multiple resources in the collection of resources.
+
+        :param list data: List of resources to be created.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: `None`
+
+        """
         _ = self.gettext
         if not isinstance(data, list):
             raise BadRequestException(
@@ -532,26 +821,36 @@ class BaseModelResource(ResourceABC):
                 partial=False,
                 context=self.schema_context,
                 gettext=self.gettext)
-            instance, errors = schema.load(obj, self.db_session)
+            instance, errors = schema.load(obj, self.session)
             if errors is None:
-                self.db_session.add(instance)
+                self.session.add(instance)
             else:
-                self.db_session.rollback()
+                self.session.rollback()
                 raise UnprocessableEntityError(errors)
-        self.db_session.commit()
-        # TODO - return number of resources created?
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise UnprocessableEntityError()
+
+    def put_collection(self, data):
+        """Not implemented, not sure how to do this."""
+        raise NotImplementedError
 
     def patch_collection(self, data):
-        """Update a collection with additions or removals.
+        """Update a collection of resources.
 
         Individual items may be updated accordingly as part of the
         request as well.
 
-        :param data: A list of object data. If the object contains a key
-            ``$op`` set to ``"add"``, the object will be added to the
-            collection; otherwise the object must already be in the
+        :param list data: A list of object data. If the object contains
+            a key ``$op`` set to ``"add"``, the object will be added to
+            the collection; otherwise the object must already be in the
             collection. If ``$op`` is set to ``"remove"``, it is
             accordingly removed from the collection.
+        :raise UnprocessableEntityError: If the supplied data cannot be
+            processed.
+        :return: `None`
 
         """
         _ = self.gettext
@@ -564,42 +863,64 @@ class BaseModelResource(ResourceABC):
                     partial=False,
                     context=self.schema_context,
                     gettext=self.gettext)
-                instance, errors = schema.load(obj, self.db_session)
+                instance, errors = schema.load(obj, self.session)
                 if errors is None:
-                    self.db_session.add(instance)
+                    self.session.add(instance)
                 else:
-                    self.db_session.rollback()
+                    self.session.rollback()
                     raise UnprocessableEntityError(errors)
             elif obj.get("$op") == "remove":
                 schema = self.schema_class(
                     partial=True,
                     context=self.schema_context,
                     gettext=self.gettext)
-                instance, errors = schema.load(obj, self.db_session)
+                instance, errors = schema.load(obj, self.session)
                 if errors is None:
-                    self.db_session.remove(instance)
+                    self.session.remove(instance)
                 else:
-                    self.db_session.rollback()
+                    self.session.rollback()
                     raise UnprocessableEntityError(errors)
             else:
                 schema = self.schema_class(
                     partial=True,
                     context=self.schema_context,
                     gettext=self.gettext)
-                instance, errors = schema.load(obj, self.db_session)
+                instance, errors = schema.load(obj, self.session)
                 if errors is not None:
-                    self.db_session.rollback()
+                    self.session.rollback()
                     raise UnprocessableEntityError(errors)
-        self.db_session.commit()
-        # TODO - maybe return a message here with # resources updated?
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise UnprocessableEntityError()
         return
 
-    def put_collection(self, data, strict=True):
-        """TODO - No idea how to handle this..."""
-        pass
+    def delete_collection(self, filters=None, session=None):
+        """Delete all filter matching members of the collection.
 
-    def delete_collection(self, filters=None, strict=True):
-        pass
+        :param filters: MQLAlchemy style filters.
+        :type filters: dict or None
+        :param session: See :meth:`get` for more info.
+        :type session: :class:`~sqlalchemy.orm.session.Session` or
+            :class:`~sqlalchemy.orm.query.Query`
+        :return: `None`
+
+        """
+        _ = self.gettext
+        if filters is None:
+            filters = {}
+        if session is None:
+            session = self.session
+        schema, query = self._get_schema_and_query(
+            session=session,
+            filters=filters)
+        query.delete()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise UnprocessableEntityError()
 
 
 class ModelResource(with_metaclass(ModelResourceMeta, BaseModelResource)):

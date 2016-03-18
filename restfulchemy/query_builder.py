@@ -19,16 +19,20 @@ def apply_sorts(query, sorts, convert_key_names_func=str):
 
     :param query: A SQLAlchemy query; filters must already have been
         applied.
+    :type query: :class:`~sqlalchemy.orm.query.Query`
     :param sorts: A list of sorts to apply to this query.
-    :param convert_key_names_func: See :func:`parse_filters`.
-    :type sorts: List of `SortInfo`
-    :raises AttributeError: If a sort with an invalid attr name is
+    :type sorts: list of :class:`~restfulchemy.parser.SortInfo`
+    :param convert_key_names_func: Used to convert key names.
+        See :func:`~restfulchemy.parser.parse_filters`.
+    :type convert_key_names_func: callable
+    :raise AttributeError: If a sort with an invalid attr name is
         provided.
-    :raises ValueError: If a sort not of type `SortInfo` is provided.
-    :returns: A modified version of the provided query object.
+    :raise ValueError: If a sort not of type
+        :class:`~restfulchemy.parser.SortInfo` is provided.
+    :return: A modified version of the provided query object.
+    :rtype: :class:`~sqlalchemy.orm.query.Query`
 
     """
-    # TODO - nested sorts
     if not isinstance(sorts, list):
         sorts = list(sorts)
     if len(query.column_descriptions) == 1:
@@ -53,9 +57,13 @@ def apply_offset_and_limit(query, offset, limit):
     """Applies offset and limit to the query if appropriate.
 
     :param query: Any desired filters must already have been applied.
+    :type query: :class:`~sqlalchemy.orm.query.Query`
     :param offset: Integer used to offset the query result.
+    :type offset: int or None
     :param limit: Integer used to limit the number of results returned.
-    :returns: A modified query object with an offset and limit applied.
+    :type limit: int or None
+    :return: A modified query object with an offset and limit applied.
+    :rtype: :class:`~sqlalchemy.orm.query.Query`
 
     """
     if offset is not None:
@@ -71,11 +79,15 @@ def apply_load_options(query, model_class, embeds, strict=True, gettext=None):
     """Given a list of embed names, determine SQLAlchemy joinedloads.
 
     :param query: SQLAlchemy query object.
+    :type query: :class:`~sqlalchemy.orm.query.Query`
     :param model_class: SQLAlchemy model class being queried.
     :param embeds: List of embedded relationships.
-    :param strict: Will ignore encountered errors if `False`.
+    :type embeds: list of str
+    :param bool strict: Will ignore encountered errors if `False`.
     :param gettext: Optionally may be provided to translate error messages.
-    :returns: An updated query object with load options applied to it.
+    :type gettext: callable or None
+    :return: An updated query object with load options applied to it.
+    :rtype: :class:`~sqlalchemy.orm.query.Query`
 
     """
     if gettext is None:
@@ -88,7 +100,7 @@ def apply_load_options(query, model_class, embeds, strict=True, gettext=None):
         split_names = item.split(".")
         parent_model = model_class
         sub_option = None
-        for i, split_name in enumerate(split_names):
+        for split_name in split_names:
             if hasattr(parent_model, split_name):
                 prop = getattr(parent_model, split_name)
                 if isinstance(prop.property, RelationshipProperty):

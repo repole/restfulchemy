@@ -64,6 +64,9 @@ def register(classname, cls):
         #   'path.to.MyClass': [path.to.MyClass],
         # }
 
+    :param str classname: Name of the class to be registered.
+    :param cls: The class to be registered.
+
     """
     # Module where the class is located
     module = cls.__module__
@@ -87,9 +90,15 @@ def register(classname, cls):
 def get_class(classname, all=False):
     """Retrieve a class from the registry.
 
-    :raises: marshmallow.exceptions.RegistryError if the class cannot
-        be found or if there are multiple entries for the given class
-        name.
+    :param str classname: Name of the class to be retrieved.
+    :param bool all: If `True`, return all classes registered using
+        the given class name.
+    :raise: :exc:`~marshmallow.exceptions.RegistryError` if the class
+        cannot be found or if there are multiple entries for the given
+        class name and ``all`` is not `True`.
+    :return: The class matching the name provided if previously
+        registered, or potentially a list of classes if ``all`` is
+        `True`.
 
     """
     try:

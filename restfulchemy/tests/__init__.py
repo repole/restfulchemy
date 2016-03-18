@@ -56,7 +56,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that a simple obj update works."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.patch((album.album_id,), {"title": "TEST"})
         self.assertTrue(
             result["title"] == "TEST" and
@@ -66,7 +66,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that a obj update works with no update params."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.patch((album.album_id,), {})
         self.assertTrue(
             result["title"] == album.title)
@@ -76,7 +76,7 @@ class RESTfulchemyTests(unittest.TestCase):
         playlist = self.db_session.query(Playlist).filter(
             Playlist.playlist_id == 18).first()
         self.assertTrue(len(playlist.tracks) == 1)
-        playlist_resource = PlaylistResource(db_session=self.db_session)
+        playlist_resource = PlaylistResource(session=self.db_session)
         update_data = {
             "tracks": [{
                 "$op": "add",
@@ -104,7 +104,7 @@ class RESTfulchemyTests(unittest.TestCase):
                     "media_type_id": "2"
                 },
                 "genre": {
-                   "genre_id": "10"
+                    "genre_id": "10"
                 },
                 "composer": "Nick Repole",
                 "milliseconds": "206009",
@@ -112,7 +112,7 @@ class RESTfulchemyTests(unittest.TestCase):
                 "unit_price": "0.99",
             }]
         }
-        playlist_resource = PlaylistResource(db_session=self.db_session)
+        playlist_resource = PlaylistResource(session=self.db_session)
         result = playlist_resource.patch((playlist.playlist_id,), update_data)
         self.assertTrue(len(playlist.tracks) == 2 and
                         len(result["tracks"]) == 2 and
@@ -123,7 +123,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Ensure we can update a list relationship item."""
         playlist = self.db_session.query(Playlist).filter(
             Playlist.playlist_id == 18).first()
-        playlist_resource = PlaylistResource(db_session=self.db_session)
+        playlist_resource = PlaylistResource(session=self.db_session)
         update_data = {
             "tracks": [{
                 "track_id": 597,
@@ -142,7 +142,7 @@ class RESTfulchemyTests(unittest.TestCase):
         update_data = {
             "artist": {"name": "TEST"}
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.patch((album.album_id,), update_data)
         self.assertTrue(
             album.artist.name == "TEST" and
@@ -152,7 +152,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Ensure we can't set a relation to a non object value."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         self.assertRaises(
             UnprocessableEntityError,
             album_resource.patch,
@@ -163,7 +163,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Ensure we can't set a list relation to a non object value."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         self.assertRaises(
             UnprocessableEntityError,
             album_resource.patch,
@@ -174,7 +174,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Ensure we can't set list relation items to a non object."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         self.assertRaises(
             UnprocessableEntityError,
             album_resource.patch,
@@ -185,7 +185,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Ensure list relation item validation works."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         self.assertRaises(
             UnprocessableEntityError,
             album_resource.patch,
@@ -194,13 +194,17 @@ class RESTfulchemyTests(unittest.TestCase):
 
     def test_error_translation(self):
         """Ensure error message translation works."""
-        def getexcited(value, **variables):
-            """Append an exclamation point to any string."""
+        def get_excited(value, **variables):
+            """Append an exclamation point to any string.
+
+            :param str value: String to be translated.
+
+            """
             return dummy_gettext(value, **variables) + "!"
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session,
-                                       gettext=getexcited)
+        album_resource = AlbumResource(session=self.db_session,
+                                       gettext=get_excited)
         try:
             album_resource.patch(
                 (album.album_id, ), {"tracks": [{"bytes": "TEST"}]})
@@ -213,7 +217,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that a non-list relation can be set."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).all()[0]
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         update_params = {
             "artist": {"artist_id": 3}
         }
@@ -226,7 +230,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that a non-list relation can be set to `None`."""
         track = self.db_session.query(Track).filter(
             Track.track_id == 1).all()[0]
-        track_resource = TrackResource(db_session=self.db_session)
+        track_resource = TrackResource(session=self.db_session)
         update_params = {
             "genre": None
         }
@@ -240,7 +244,7 @@ class RESTfulchemyTests(unittest.TestCase):
         track = self.db_session.query(Track).filter(
             Track.track_id == 1).all()[0]
         track.genre = None
-        track_resource = TrackResource(db_session=self.db_session)
+        track_resource = TrackResource(session=self.db_session)
         update_data = {
             "genre": {"genre_id": 1}
         }
@@ -253,7 +257,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that we can remove an item from a list relation."""
         playlist = self.db_session.query(Playlist).filter(
             Playlist.playlist_id == 18).first()
-        playlist_resource = PlaylistResource(db_session=self.db_session)
+        playlist_resource = PlaylistResource(session=self.db_session)
         update_params = {
             "tracks": [{
                 "track_id": 597,
@@ -270,7 +274,7 @@ class RESTfulchemyTests(unittest.TestCase):
         """Make sure that a non-list relation can be created."""
         album = self.db_session.query(Album).filter(
             Album.album_id == 1).first()
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         update_params = {
             "artist": {
                 "artist_id": 999,
@@ -292,7 +296,7 @@ class RESTfulchemyTests(unittest.TestCase):
             "album_id-lt": "10",
             "query": json.dumps({"title": "Big Ones"})
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params)
         )
@@ -314,7 +318,7 @@ class RESTfulchemyTests(unittest.TestCase):
             "album_id-ne": 6,
             "query": json.dumps({"title": "Big Ones"})
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params)
         )
@@ -326,7 +330,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_all_objects(self):
         """Test getting all objects with an empty dict of params."""
         query_params = {}
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params)
         )
@@ -335,7 +339,7 @@ class RESTfulchemyTests(unittest.TestCase):
     def test_get_all_objects_null_query(self):
         """Test getting all objects with query_params set to `None`."""
         query_params = None
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params)
         )
@@ -346,7 +350,7 @@ class RESTfulchemyTests(unittest.TestCase):
         query_params = {
             "sort": "-album_id,title"
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params),
             sorts=parse_sorts(query_params)
@@ -360,7 +364,7 @@ class RESTfulchemyTests(unittest.TestCase):
         query_params = {
             "sort": "album_id"
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         offset, limit = parse_offset_limit(query_params, page_max_size=30)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params),
@@ -378,7 +382,7 @@ class RESTfulchemyTests(unittest.TestCase):
             "sort": "album_id",
             "page": "2"
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         offset, limit = parse_offset_limit(query_params, page_max_size=30)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params),
@@ -413,7 +417,7 @@ class RESTfulchemyTests(unittest.TestCase):
         query_params = {
             "offset": "1"
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         offset, limit = parse_offset_limit(query_params, page_max_size=30)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params),
@@ -437,7 +441,7 @@ class RESTfulchemyTests(unittest.TestCase):
         query_params = {
             "limit": "1"
         }
-        album_resource = AlbumResource(db_session=self.db_session)
+        album_resource = AlbumResource(session=self.db_session)
         offset, limit = parse_offset_limit(query_params, page_max_size=30)
         result = album_resource.get_collection(
             filters=parse_filters(album_resource.model, query_params),

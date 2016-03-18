@@ -23,7 +23,7 @@ class ModelResourceSchemaOpts(ModelSchemaOpts):
     Defaults ``model_converter`` to
     :class:`~restfulchemy.convert.ModelResourceConverter`.
 
-    Defaults ``id_keys`` to ``None``, resulting in the model's
+    Defaults ``id_keys`` to `None`, resulting in the model's
     primary keys being used as identifier fields.
 
     Example usage:
@@ -44,7 +44,7 @@ class ModelResourceSchemaOpts(ModelSchemaOpts):
         """Handle the meta class attached to a `ModelResourceSchema`.
 
         :param meta: The meta class attached to a
-            :class:`~restfulchemy.resource.ModelResourceSchema`.
+            :class:`~restfulchemy.schema.ModelResourceSchema`.
 
         """
         super(ModelResourceSchemaOpts, self).__init__(meta)
@@ -68,8 +68,8 @@ class ModelResourceSchema(ModelSchema):
 
         Also runs :meth:`process_context` upon completion.
 
-        :param gettext: Used to translate error messages. Must be
-            a callable.
+        :param gettext: Used to translate error messages.
+        :type gettext: callable or None
 
         """
         self._gettext = kwargs.pop("gettext", None)
@@ -166,8 +166,9 @@ class ModelResourceSchema(ModelSchema):
         :param dict data: Data to be loaded into an instance.
         :param session: Optional database session. Will be used in place
             of ``self.session`` if provided.
+        :type session: :class:`~sqlalchemy.orm.session.Session`
         :param instance: SQLAlchemy model instance data should be loaded
-            into. If ``None`` is provided at this point or when the
+            into. If `None` is provided at this point or when the
             class was initialized, an instance will either be determined
             using the provided data via :meth:`get_instance`, or if that
             fails a new instance will be created.
@@ -189,7 +190,15 @@ class ModelResourceSchema(ModelSchema):
              data, session, instance, *args, **kwargs)
 
     def handle_error(self, error, data):
-        """Modifies error messages."""
+        """Modifies error messages.
+
+        :param error: The exception instance to be raised. The
+            error messages are modified in place rather than a
+            new error being created.
+        :type error: :class:`~marshmallow.exceptions.ValidationError`
+        :param dict data: The provided data to be deserialized.
+
+        """
         messages = error.messages
         for key in messages:
             if isinstance(messages[key], list):
@@ -197,13 +206,17 @@ class ModelResourceSchema(ModelSchema):
                     messages[key][i] = self.translate_error(messages[key][i])
 
     def process_context(self):
-        """Override to modify a schema based on context."""
+        """Override to modify a schema based on context.
+
+        Is called when a schema is initialized or embedded.
+
+        """
         pass
 
     def translate_error(self, value, **variables):
         """Override to modify a schema based on context.
 
-        :param value: An error string to be translated.
+        :param str value: An error string to be translated.
 
         """
         if self._gettext is None:

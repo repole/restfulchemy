@@ -1,5 +1,5 @@
 """
-    restfulchemy.schema
+    restfulchemy.parser
     ~~~~~~~~~~~~~~~~~~~
 
     Functions for parsing query info from url parameters.
@@ -18,23 +18,28 @@ OffsetLimitInfo = namedtuple('OffsetLimitInfo', "offset limit")
 
 
 class OffsetLimitParseError(Exception):
+
     """Generic exception class for query parsing errors."""
+
     pass
 
 
 class InvalidSortInfoException(Exception):
+
     """Generic exception class for invalid sort info applying."""
+
     pass
 
 
 def parse_fields(query_params, fields_query_name="fields"):
     """Parse from query params the fields to include in the response.
 
-    :param query_params: Dictionary in which a list of fields may
+    :param dict query_params: Dictionary in which a list of fields may
         be specified for return.
-    :param fields_query_name: The name of the key used to check for
-        fields in the provided query_params.
-    :returns: A list of fields to be included in the response.
+    :param str fields_query_name: The name of the key used to check for
+        fields in the provided ``query_params``.
+    :return: A list of fields to be included in the response.
+    :rtype: list of str
 
     """
     fields = query_params.get(fields_query_name)
@@ -45,13 +50,14 @@ def parse_fields(query_params, fields_query_name="fields"):
 
 
 def parse_embeds(query_params, embeds_query_name="embeds"):
-    """Parse subresource embeds from query params.
+    """Parse sub-resource embeds from query params.
 
-    :param query_params: Dictionary in which a list of embedded fields
-        may be specified.
-    :param embeds_query_name: The name of the key used to check for
-        an embed in the provided query_params.
-    :returns: A list of embeds to include in the response.
+    :param dict query_params: Dictionary in which a list of embedded
+        fields may be specified.
+    :param str embeds_query_name: The name of the key used to check for
+        an embed in the provided ``query_params``.
+    :return: A list of embeds to include in the response.
+    :rtype: list of str
 
     """
     embeds = query_params.get(embeds_query_name)
@@ -67,30 +73,32 @@ def parse_offset_limit(query_params, page_max_size=None,
                        gettext=None):
     """Parse offset and limit from the provided query params.
 
-    :param query_params: A dictionary in which a limit or offset may
-        be specified.
-    :param page_max_size: If page is provided, `page_max_size` limits
+    :param dict query_params: A dictionary in which a limit or offset
+        may be specified.
+    :param page_max_size: If page is provided, ``page_max_size`` limits
         the number of results returned. Otherwise, if using limit and
-        offset values from the `query_paras`, `page_max_size` sets a
-        max number of records to allow.
-    :param page_query_name: The name of the key used to check for a page
-        value in the provided `query_params`. If page is provided, it is
-        used along with the `page_max_size` to determine the offset that
-        should be applied to the query. If a page number other than 1
-        is provided, a `page_max_size` must also be provided.
-    :param offset_query_name: The name of the key used to check for an
-        offset value in the provided `query_params`.
-    :param limit_query_name: The name of the key used to check for a
-        limit value in the provided `query_params`.
+        offset values from the ``query_params``, ``page_max_size`` sets
+        a max number of records to allow.
+    :type page_max_size: int or None
+    :param str page_query_name: The name of the key used to check for a
+        page value in the provided ``query_params``. If page is
+        provided, it is used along with the ``page_max_size`` to
+        determine the offset that should be applied to the query. If a
+        page number  other than 1 is provided, a ``page_max_size`` must
+        also be provided.
+    :param str offset_query_name: The name of the key used to check for
+        an offset value in the provided ``query_params``.
+    :param str limit_query_name: The name of the key used to check for a
+        limit value in the provided ``query_params``.
     :param strict: If `True`, exceptions will be raised for invalid
         input. Otherwise, invalid input will be ignored.
     :param gettext: Optional function to be used for any potential
         error translation.
-    :raises OffsetLimitParseError: Applicable if using strict mode
+    :raise OffsetLimitParseError: Applicable if using strict mode
         only. If the provided limit is greater than page_max_size, or an
         invalid page, offset, or limit value is provided, then a
         :exc:`OffsetLimitParseError` is raised.
-    :returns: An offset and limit value for this query.
+    :return: An offset and limit value for this query.
     :rtype: :class:`OffsetLimitInfo`
 
     """
@@ -157,10 +165,12 @@ def parse_offset_limit(query_params, page_max_size=None,
 def parse_sorts(query_params, sort_query_name="sort"):
     """Parse sorts from provided the query params.
 
-    :param query_params: A dictionary in which sorts may be specified.
-    :param sort_query_name: The name of the key used to check for sorts
-        in the provided `query_params`.
-    :returns: A list of :class:`SortInfo`
+    :param dict query_params: A dictionary in which sorts may be
+        specified.
+    :param str sort_query_name: The name of the key used to check for
+        sorts in the provided ``query_params``.
+    :return: The sorts that should be applied.
+    :rtype: list of :class:`SortInfo`
 
     """
     result = []
@@ -183,29 +193,33 @@ def parse_filters(model_class, query_params, complex_query_name="query",
     """Convert request params into MQLAlchemy friendly search.
 
     :param model_class: The SQLAlchemy class being queried.
-    :param query_params: A dict of query params in which filters may be
-        supplied.
-    :param complex_query_name: The name of the key used to check for a
-        complex query value in the provided `query_params`. Note that
-        the complex query should be a json dumped dictionary value.
-    :param only_parse_complex: Set to `True` if all simple filters in
-        the query params should be ignored.
+    :param dict query_params: A dict of query params in which filters
+        may be supplied.
+    :param str complex_query_name: The name of the key used to check for
+        a complex query value in the provided ``query_params``. Note
+        that the complex query should be a json dumped dictionary value.
+    :param bool only_parse_complex: Set to `True` if all simple filters
+        in the query params should be ignored.
     :param convert_key_names_func: If provided, should take in a dot
         separated attr name and transform it such that the result is
-        the corresponding dot separated attribute in the `model_class`
+        the corresponding dot separated attribute in the ``model_class``
         being queried.
         Useful if, for example, you want to allow users to provide an
         attr name in one format (say camelCase) and convert it to the
         naming format used for your model objects (likely underscore).
-    :param strict: If `True`, exceptions will be raised for invalid
+    :type convert_key_names_func: callable or None
+    :param bool strict: If `True`, exceptions will be raised for invalid
         input. Otherwise, invalid input will be ignored.
     :param gettext: Optionally may provide a gettext function to handle
         error message translations.
-    :raises InvalidMQLException: Malformed complex queries or
-        invalid `query_params` will result in an InvalidMQLException
-        being raised if `strict` is `True`.
-    :returns: A dictionary containing filters that can be passed
+    :type gettext: callable or None
+    :raise InvalidMQLException: Malformed complex queries or
+        invalid ``query_params`` will result in an
+        :exc:`~mqlalchemy.InvalidMQLException` being raised if
+        ``strict`` is `True`.
+    :return: A dictionary containing filters that can be passed
         to mqlalchemy for query filtering.
+    :rtype: dict
 
     """
     if gettext is None:

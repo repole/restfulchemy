@@ -4,6 +4,9 @@
 
     Tools for automatically routing API url paths to resources.
 
+    Work in progress, should not be used as anything other than
+    a proof of concept at this point.
+
     :copyright: (c) 2016 by Nicholas Repole and contributors.
                 See AUTHORS for more details.
     :license: MIT - See LICENSE for more details.
@@ -16,7 +19,18 @@ from restfulchemy.resource import BadRequestException
 
 
 def generic_api_router_get(path, api_resource, query_params, strict=True):
-    """Generic API router for GET requests."""
+    """Generic API router for GET requests.
+
+    :param str path: The resource path specified.
+    :param api_resource: A resource instance.
+    :type api_resource: :class:`~restfulchemy.resource.ModelResource`
+    :param dict query_params: Dictionary of query parameters.
+    :param bool strict: If `True`, raise non fatal errors rather
+        than ignoring them.
+    :return: If this is a single entity query, an individual resource
+        or `None`. If this is a collection query, a list of resources.
+
+    """
     split_path = path.split("/")
     # remove empty string if path started with a slash
     if len(split_path) > 0 and split_path[0] == "":
@@ -65,7 +79,7 @@ def generic_api_router_get(path, api_resource, query_params, strict=True):
         # e.g. /albums/1/tracks or /albums/1/tracks/5
         sub_split_path = split_path[(len(id_keys) + 1):]
         # get the parent obj
-        parent_query = api_resource.db_session.query(api_resource.model)
+        parent_query = api_resource.session.query(api_resource.model)
         for i, id_key in enumerate(id_keys):
             # TODO - error handling here
             model_attr = getattr(api_resource.model, id_key)
@@ -78,16 +92,20 @@ def generic_api_router_get(path, api_resource, query_params, strict=True):
             raise BadRequestException()
         sub_resource_name = api_resource.convert_key_name(sub_split_path[0])
         sub_resource_field = api_resource.schema_class().fields.get(
-                sub_resource_name)
+            sub_resource_name)
         if isinstance(sub_resource_field, EmbeddedField):
             if isinstance(sub_resource_field.default_field, RelationshipUrl):
                 sub_resource_api_class = (
                     sub_resource_field.default_field.resource_class)
         # TODO - Error handling here
         sub_resource_api = sub_resource_api_class(
-            db_session=api_resource.db_session,
+            session=api_resource.session,
             gettext=api_resource.gettext)
         sub_id_keys = sub_resource_api.schema_class().id_keys
+        query_session = sub_resource_api.session
+        query_session = query_session.query(sub_resource_api.model)
+        query_session = query_session.with_parent(parent,
+                                                  sub_resource_name)
         if len(sub_split_path) == 1:
             # e.g. /albums/1/tracks
             filters = parse_filters(
@@ -108,9 +126,8 @@ def generic_api_router_get(path, api_resource, query_params, strict=True):
                 sorts=sorts,
                 offset=offset,
                 limit=limit,
-                strict=strict,
-                parent=parent,
-                parent_relationship=sub_resource_name)
+                session=query_session,
+                strict=strict)
         elif len(sub_split_path) < (len(sub_id_keys) + 1):
             # e.g. /albums/1/some_resource/<key_one_of_two>
             # sub resource has a multi key identifier; only one provided
@@ -125,14 +142,27 @@ def generic_api_router_get(path, api_resource, query_params, strict=True):
                 ident=ident,
                 fields=fields,
                 embeds=embeds,
-                strict=strict)
+                strict=strict,
+                session=query_session)
         else:
             raise BadRequestException()
 
 
 def generic_api_router(method, path, api_resource, query_params, data=None,
                        content_type="json", strict=True):
-    """Route requests based on path and resource."""
+    """Route requests based on path and resource.
+
+    :param str path: The resource path specified. This should not include
+        the root ``/api`` or any versioning info.
+    :param api_resource: An already initialized resource instance.
+    :type api_resource: :class:`~restfulchemy.resource.ResourceABC`
+    :param dict query_params: Dictionary of query parameters, likely
+        provided as part of a request.
+    :param bool strict: If `True`, faulty pagination info, fields, or
+        embeds will result in an error being raised rather than
+        silently ignoring them.
+
+    """
     if method.toLower() == "GET":
         return generic_api_router_get(path, api_resource, query_params, strict)
     else:

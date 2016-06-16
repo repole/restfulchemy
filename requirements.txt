@@ -1,5 +1,0 @@
-SQLAlchemy>=0.9
-MQLAlchemy>=0.2
-inflection
-marshmallow==2.3.0
-marshmallow-sqlalchemy==0.8.0
